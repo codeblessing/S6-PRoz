@@ -1,0 +1,53 @@
+\documentclass[12pt, a4paper, twoside]{article}
+
+\usepackage{amsmath}
+
+\begin{document}
+
+\section*{Problem}
+
+$ W $ winiarzy (oznaczonych dalej przez $ W_{i} $) produkuje każdy po $ X_{i} $ litrów wina.\\
+$ S $ studentów (oznaczonych dalej przez $ S_{j} $) konsumuje każdy po $ Y_{j} $ litrów wina.\\
+Aby przekazać wino, winiarz musi wynająć bezpieczne miejsce $ B_{k} $.\\
+Winiarz nie rozpocznie produkcji wina, dopóki nie odda wszystkiego, co już wyprodukował.\\
+\\
+Przy założeniach:
+$$ i \in \left\{1, 2, \ldots, W\right\} $$
+$$ j \in \left\{1, 2, \ldots, S\right\} $$
+$$ k \in \left\{1, 2, \ldots, N\right\} $$
+$$ \neg (\forall_{i \in \{1, 2, \ldots, W\}} \exists_{j \in \left\{1, 2, \ldots, S\right\}} X_{i} = Y_{j}) $$
+
+\section*{Proponowane rozwiązanie}
+
+Aby rozwiązać podany problem musimy poczynić dodatkowe założenia:
+
+\begin{itemize}
+    \item $ \sum X_{i} = \sum Y_{j} $
+    \item Winiarz nie musi oddać całej partii jednemu studentowi ($ X_{i} \geq Y_{j} $)
+    \item Student nie musi zaspokoić wszystkich swoich potrzeb u jednego winiarza ($ Y_{j} \geq X_{i} $)
+    \item Student może w razie potrzeby zaspokoić tylko część swojego zapotrzebowania, jednak pozostała część musi zostać zaspokojona tak szybko jak to tylko możliwe. 
+\end{itemize}
+
+Założenie pierwsze zapobiega problemowi nadprodukcji. Jeśli założymy że proces jest ciągły i nieskończony, to przybiera ono formę:
+\begin{equation*}
+    \lim_{n \to \infty}{n \times \sum X_{i}} = \lim_{n \to \infty}{n \times \sum Y_{j}}
+\end{equation*}
+i jest niespełnialne w praktyce.\\
+\\
+Założenia drugie i trzecie zapobiegają sytuacji, w której popyt i podaż sumarycznie się równoważą, ale niemożliwy jest przydział całościowy.\\
+\\
+Założenie czwarte jest potrzebne w przypadku procesu ciągłego i nieskończonego, pozwalając na złamanie założenia pierwszego w czasie jednej iteracji
+zakładając, że zostanie ono skorygowane w czasie następnych iteracji (zbyt mała podaż w i-tej iteracji zostanie zrównoważona nadpodażą w  i + 1 iteracji)
+\subsection*{Opis algorytmu}
+
+\begin{enumerate}
+    \item Winiarz $ W_{i} $ "produkuje" $ X_{i} $ litrów wina i ubiega się o bezpieczne miejsce $ B_{i} $ (sekcja krytyczna).
+    \item Po otrzymaniu $ B_{i}, W_{i} $ rozsyła informację o $ X_{i} $ do wszystkich studentów.
+    \item Student $ S_{j} $ określa swoje zapotrzebowanie na $ Y_{j} $ litrów wina i ubiega się o dostęp do winiarzy (sekcja krytyczna).
+    \item Jeśli dostępne są zasoby wina, $ S_{j} $ otrzymuje dostęp (zgodnie z algorytmem przydziału), w przeciwnym przypadku oczekuje na wiadomość od $ W_{i} $.
+    \item Po otrzymaniu dostępu do winiarzy $ S_{j} $, wybiera winiarzy od których weźmie wino
+    \item Po wyborze winiarzy $ S_{j} $ odbiera wino i (jeśli odebrał całą partię) zwalnia $ B_{i} $ i informuje  o tym $ W_{i} $.
+    \item Jeśli zapotrzebowanie $ S_{j} $ nie może zostać spełnione, to rozgłasza on wyczerpanie zasobów wina i ponownie ubiega się o dostęp do winiarzy dostając najwyższy priorytet.
+\end{enumerate}
+
+\end{document}
