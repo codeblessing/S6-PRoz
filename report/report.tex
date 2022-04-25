@@ -41,13 +41,15 @@ zakładając, że zostanie ono skorygowane w czasie następnych iteracji (zbyt m
 \subsection*{Opis algorytmu}
 
 \begin{enumerate}
-    \item Winiarz $ W_{i} $ "produkuje" $ X_{i} $ litrów wina i ubiega się o bezpieczne miejsce $ B_{i} $ (sekcja krytyczna).
-    \item Po otrzymaniu $ B_{i}, W_{i} $ rozsyła informację o $ X_{i} $ do wszystkich studentów.
-    \item Student $ S_{j} $ określa swoje zapotrzebowanie na $ Y_{j} $ litrów wina i ubiega się o dostęp do winiarzy (sekcja krytyczna).
-    \item Jeśli dostępne są zasoby wina, $ S_{j} $ otrzymuje dostęp (zgodnie z algorytmem przydziału), w przeciwnym przypadku oczekuje na wiadomość od $ W_{i} $.
-    \item Po otrzymaniu dostępu do winiarzy $ S_{j} $, wybiera winiarzy od których weźmie wino
+    \item Winiarz $ W_{i} $ "produkuje" $ X_{i} $ litrów wina i ubiega się o bezpieczne miejsce $ B_{i} $.
+    \item Po otrzymaniu $ B_{i} $ (wejście do sekcji krytycznej), $ W_{i} $ rozsyła informację o $ X_{i} $ do wszystkich studentów i wychodzi z sekcji krytycznej.
+    \item Student $ S_{j} $ określa swoje zapotrzebowanie na $ Y_{j} $ litrów wina i ubiega się o dostęp do winiarzy.
+    \item Jeśli dostępne są zasoby wina, $ S_{j} $ otrzymuje dostęp zgodnie z algorytmem przydziału, w przeciwnym przypadku oczekuje na wiadomość od $ W_{i} $.
+    \item Po otrzymaniu dostępu do winiarzy (wejście do sekcji krytycznej) $ S_{j} $, wybiera winiarzy od których weźmie wino
     \item Po wyborze winiarzy $ S_{j} $ odbiera wino i (jeśli odebrał całą partię) zwalnia $ B_{i} $ i informuje  o tym $ W_{i} $.
-    \item Jeśli zapotrzebowanie $ S_{j} $ nie może zostać spełnione, to rozgłasza on wyczerpanie zasobów wina i ponownie ubiega się o dostęp do winiarzy dostając najwyższy priorytet.
+    \item Jeśli $ S_{j} $ odebrał całe wino jakie było dostępne, to rozgłasza on wyczerpanie zasobów wina.
+    \item $ S_{j} $ wychodzi z sekcji krytycznej.
+    \item Jeśli zapotrzebowanie $ S_{j} $ nie zostało w całości zaspokojone, to ponownie ubiega się on o dostęp do winiarzy dostając najwyższy priorytet.
 \end{enumerate}
 
 \end{document}
