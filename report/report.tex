@@ -41,7 +41,7 @@ zakładając, że zostanie ono skorygowane w czasie następnych iteracji (zbyt m
 \subsection*{Opis algorytmu}
 
 \begin{enumerate}
-    \item Winiarz $ W_{i} $ "produkuje" $ X_{i} $ litrów wina i ubiega się o bezpieczne miejsce $ B_{i} $.
+    \item Winiarz $ W_{i} $ ,,produkuje'' $ X_{i} $ litrów wina i ubiega się o bezpieczne miejsce $ B_{i} $.
     \item Po otrzymaniu $ B_{i} $ (wejście do sekcji krytycznej), $ W_{i} $ rozsyła informację o $ X_{i} $ do wszystkich studentów i wychodzi z sekcji krytycznej.
     \item Student $ S_{j} $ określa swoje zapotrzebowanie na $ Y_{j} $ litrów wina i ubiega się o dostęp do winiarzy.
     \item Jeśli dostępne są zasoby wina, $ S_{j} $ otrzymuje dostęp zgodnie z algorytmem przydziału, w przeciwnym przypadku oczekuje na wiadomość od $ W_{i} $.
