@@ -1,11 +1,17 @@
-\documentclass[12pt, a4paper, twoside]{article}
+\documentclass[12pt, a4paper, oneside]{article}
 
 \usepackage{amsmath}
+\usepackage[margin=0.8in]{geometry}
+
+\title{Programowanie rozproszone}
+\author{Jakub Kwiatkowski 145356\\Paweł Strzelczyk 145217}
+\date{}
+
 
 \begin{document}
+\maketitle
 
 \section*{Problem}
-
 $ W $ winiarzy (oznaczonych dalej przez $ W_{i} $) produkuje każdy po $ X_{i} $ litrów wina.\\
 $ S $ studentów (oznaczonych dalej przez $ S_{j} $) konsumuje każdy po $ Y_{j} $ litrów wina.\\
 Aby przekazać wino, winiarz musi wynająć bezpieczne miejsce $ B_{k} $.\\
@@ -25,14 +31,14 @@ Aby rozwiązać podany problem musimy poczynić dodatkowe założenia:
     \item $ \sum X_{i} = \sum Y_{j} $
     \item Winiarz nie musi oddać całej partii jednemu studentowi ($ X_{i} \geq Y_{j} $)
     \item Student nie musi zaspokoić wszystkich swoich potrzeb u jednego winiarza ($ Y_{j} \geq X_{i} $)
-    \item Student może w razie potrzeby zaspokoić tylko część swojego zapotrzebowania, jednak pozostała część musi zostać zaspokojona tak szybko jak to tylko możliwe. 
+    \item Student może w razie potrzeby zaspokoić tylko część swojego zapotrzebowania, jednak pozostała część musi zostać zaspokojona tak szybko jak to tylko możliwe.
 \end{itemize}
 
 Założenie pierwsze zapobiega problemowi nadprodukcji. Jeśli założymy że proces jest ciągły i nieskończony, to przybiera ono formę:
 \begin{equation*}
     \lim_{n \to \infty}{n \times \sum X_{i}} = \lim_{n \to \infty}{n \times \sum Y_{j}}
 \end{equation*}
-i jest niespełnialne w praktyce.\\
+i jest pomijalne w praktyce.\\
 \\
 Założenia drugie i trzecie zapobiegają sytuacji, w której popyt i podaż sumarycznie się równoważą, ale niemożliwy jest przydział całościowy.\\
 \\
@@ -41,15 +47,27 @@ zakładając, że zostanie ono skorygowane w czasie następnych iteracji (zbyt m
 \subsection*{Opis algorytmu}
 
 \begin{enumerate}
-    \item Winiarz $ W_{i} $ ,,produkuje'' $ X_{i} $ litrów wina i ubiega się o bezpieczne miejsce $ B_{i} $.
-    \item Po otrzymaniu $ B_{i} $ (wejście do sekcji krytycznej), $ W_{i} $ rozsyła informację o $ X_{i} $ do wszystkich studentów i wychodzi z sekcji krytycznej.
-    \item Student $ S_{j} $ określa swoje zapotrzebowanie na $ Y_{j} $ litrów wina i ubiega się o dostęp do winiarzy.
-    \item Jeśli dostępne są zasoby wina, $ S_{j} $ otrzymuje dostęp zgodnie z algorytmem przydziału, w przeciwnym przypadku oczekuje na wiadomość od $ W_{i} $.
-    \item Po otrzymaniu dostępu do winiarzy (wejście do sekcji krytycznej) $ S_{j} $, wybiera winiarzy od których weźmie wino
-    \item Po wyborze winiarzy $ S_{j} $ odbiera wino i (jeśli odebrał całą partię) zwalnia $ B_{i} $ i informuje  o tym $ W_{i} $.
-    \item Jeśli $ S_{j} $ odebrał całe wino jakie było dostępne, to rozgłasza on wyczerpanie zasobów wina.
-    \item $ S_{j} $ wychodzi z sekcji krytycznej.
-    \item Jeśli zapotrzebowanie $ S_{j} $ nie zostało w całości zaspokojone, to ponownie ubiega się on o dostęp do winiarzy dostając najwyższy priorytet.
+    \item Winiarz $ W_{i} $ ,,produkuje'' $ X_{i} $ litrów wina i ubiega się o bezpieczne miejsce $ B_{i} $:
+    \begin{enumerate}
+        \item  $ W_{i} $ rozsyła do wszystkich winiarzy wiadomość \texttt{REQ} zawierającą swój zegar Lamporta $ L_{W_{i}} $ oraz żądane miejsce $ B_{i} $.
+        \item Po otrzymaniu wiadomości \texttt{ACK} (lub \texttt{REQ} z wyższymi zegarami Lamporta niż własny) od wszystkich winiarzy,
+        $ W_{i} $ wchodzi do sekcji krytycznej i rozsyła wszystkim wiadomość $ M_{W_{i}} $ (\texttt{INFO}) zawierającą informacje o $ B_{i} $ i $ X_{i} $.
+        \item Jeśli $ W_{i} $ otrzyma wiadomość \texttt{REQ} z zegarem Lamporta niższym niż własny odsyła \texttt{ACK} i dalej oczekuje na pozostałe \texttt{ACK}.
+        \item Po rozgłoszeniu wiadomości $ M_{W_{i}} $, $ W_{i} $ wychodzi z sekcji krytycznej i rozsyła \texttt{ACK} wszystkim oczekującym.
+    \end{enumerate}
+    \item $ W_{i} $ rozpoczyna następną produkcję dopiero po otrzymaniu \texttt{RELEASE} zawierającego $ B_{i} $.
+    
+    \item Student $ S_{j} $ określa swoje zapotrzebowanie na $ Y_{j} $ litrów wina i ubiega się o dostęp do $ B_{k} $:
+    \begin{enumerate}
+        \item $ S_{j} $ wysyła do wszystkich studentów wiadomość \texttt{REQ} zawierającą $ B_{k} $ oraz ilość wina jaką zamierza stamtąd pobrać.
+        \item Po otrzymaniu wiadomości \texttt{ACK} (lub \texttt{REQ} z wyższymi zegarami Lamporta niż własny) od wszystkich studentów,
+        $ S_{j} $ wchodzi do sekcji krytycznej.
+        \item Jeśli $ S_{j} $ wyczerpie zasoby $ B_{k} $, to rozsyła winiarzom wiadomość \texttt{RELEASE} zawierającą $ B_{k} $.
+        \item Po wyjściu z sekcji krytycznej $ S_{j} $ rozsyła \texttt{ACK} wszystkim oczekującym.
+    \end{enumerate}
+    \item $ S_{j} $ ubiega się o kolejne $ B_{k} $ doputy, dopóki nie wypełni zapotrzebowania $ Y_{j} $.
 \end{enumerate}
+
+Zegary Lamporta są inkrementowane w zwykły sposób, jednak nigdy nie w trakcie rozsyłania wiadomości (rozesłanie wiadomości do grupy odbiorców jest traktowane jako operacja atomowa).
 
 \end{document}

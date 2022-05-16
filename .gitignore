@@ -4,4 +4,7 @@
 *.synctex*
 *latex*
 *.sh
+*.o
 .vscode/
+obj/
+bin/
