@@ -1,4 +1,4 @@
-CXX_FLAGS = --std=c++14 -Wall -Wextra -Wpedantic
+CXX_FLAGS = --std=c++17 -Wall -Wextra -Wpedantic
 
 # External libraries
 FMT = vendor/fmt
@@ -23,4 +23,7 @@ clean:
 	rm -rf obj bin; mkdir obj bin bin/test
 
 test:
-	mpicxx -D__WINEMAKER_TEST__ $(CXX_FLAGS) $(INCLUDE) $(LIBS) $(SRCS) -o winemaker && mv winemaker ./bin/test/ && mpirun -np 1 ./bin/test/winemaker
+	mpicxx -D__WINEMAKER_TEST__ $(CXX_FLAGS) $(INCLUDE) $(LIBS) $(SRCS) -o winemaker && mv winemaker ./bin/test/ && mpirun -np 2 ./bin/test/winemaker
+
+build_test_debug:
+	mpicxx -D__WINEMAKER_TEST__ $(CXX_FLAGS) $(INCLUDE) $(LIBS) $(SRCS) -o winemaker && mv winemaker ./bin/test/

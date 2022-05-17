@@ -8,6 +8,7 @@ namespace nouveaux
     {
         enum class Type
         {
+            UNKNOWN,
             WMREQ,
             WMACK,
             WMINFO,
