@@ -8,14 +8,49 @@
 
 namespace nouveaux
 {
-    Winemaker::Winemaker(std::size_t safe_house_count, std::array<uint32_t, 2> winemakers_index_range, uint32_t min_wine_volume, uint32_t max_wine_volume)
-        : __rng(std::random_device()()), __dist(min_wine_volume, max_wine_volume), __winemakers(winemakers_index_range)
+    WinemakerBuilder::WinemakerBuilder(uint64_t safehouse_count, std::array<uint64_t, 2> &&winemakers)
+        : min_wine_volume(1), max_wine_volume(1000), winemakers(std::move(winemakers))
     {
-        MPI_Comm_rank(MPI_COMM_WORLD, &__rank);
-        MPI_Comm_size(MPI_COMM_WORLD, &__system_size);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &system_size);
 
-        __safehouse = __rank % safe_house_count;
-        __winemakers_count = winemakers_index_range[1] - winemakers_index_range[0];
+        safehouse = rank % safehouse_count;
+    }
+
+    auto WinemakerBuilder::wine_volume(uint32_t min_volume, uint32_t max_volume) -> WinemakerBuilder
+    {
+        if (min_volume > max_volume)
+        {
+            auto temp = min_volume;
+            min_volume = max_volume;
+            max_volume = temp;
+        }
+
+        min_wine_volume = min_volume;
+        max_wine_volume = max_volume;
+
+        return *this;
+    }
+
+    auto WinemakerBuilder::build() -> Winemaker
+    {
+        return Winemaker(rank, system_size, safehouse, std::move(winemakers), min_wine_volume, max_wine_volume);
+    }
+
+    Winemaker::Winemaker(int32_t rank, int32_t system_size, uint64_t safehouse, std::array<uint64_t, 2> winemakers, uint32_t min_wine_volume, uint32_t max_wine_volume)
+        : __rng(std::random_device()()),
+          __dist(min_wine_volume, max_wine_volume),
+          __safehouse(safehouse),
+          __winemakers(std::move(winemakers)),
+          __winemakers_count(__winemakers[1] - __winemakers[0]),
+          __rank(rank),
+          __system_size(system_size)
+    {
+    }
+
+    auto Winemaker::builder(uint64_t safehouse_count, std::array<uint64_t, 2> winemakers) -> WinemakerBuilder
+    {
+        return WinemakerBuilder(safehouse_count, std::move(winemakers));
     }
 
     auto Winemaker::run() -> void
@@ -31,12 +66,12 @@ namespace nouveaux
 
     auto Winemaker::listen_for_messages() -> void
     {
+#ifdef __WINEMAKER_TEST__
         fmt::print("Entering listen_for_messages.\n");
-        #ifdef __WINEMAKER_TEST__
-        for(int i = 0; i < 2; ++i)
-        #else
+        for (int i = 0; i < 2; ++i)
+#else
         while (true)
-        #endif
+#endif
         {
             uint64_t buffer[3];
             MPI_Status status;
@@ -70,9 +105,11 @@ namespace nouveaux
             Message message{
                 type,
                 sender,
-                content
-            };
+                content};
+
+#ifdef __WINEMAKER_TEST__
             fmt::print("Leaving listen_for_messages.\n");
+#endif
 
             handle_message(message);
         }
@@ -87,10 +124,10 @@ namespace nouveaux
             if (__safehouse_acquired)
             {
                 __safehouse_acquired = false;
-                ++__lamport;
+                ++__timestamp;
                 for (auto &&receiver : __pending_ack)
                 {
-                    MPI_Send(&__lamport, 1, MPI_LONG_LONG, receiver, WINEMAKER_AQUIRE_ACK, MPI_COMM_WORLD);
+                    MPI_Send(&__timestamp, 1, MPI_LONG_LONG, receiver, WINEMAKER_AQUIRE_ACK, MPI_COMM_WORLD);
                 }
             }
             if (!__acquiring_safehouse)
@@ -100,24 +137,24 @@ namespace nouveaux
         {
             // If received request has lower priority (higher lamport clock) then we can treat this as ACK
             // but we need to remember to send ACK when we will free the safehouse.
-            if (__acquiring_safehouse && message.content.wm_req.lamport_timestamp > __last_req_lamport && message.content.wm_req.safehouse_index == __safehouse)
+            if (__acquiring_safehouse && message.content.wm_req.lamport_timestamp > __current_priority && message.content.wm_req.safehouse_index == __safehouse)
             {
                 fmt::print("Received WMREQ from {}, waiting...\n", message.sender);
-                __lamport = std::max(__lamport, message.content.wm_req.lamport_timestamp);
+                __timestamp = std::max(__timestamp, message.content.wm_req.lamport_timestamp);
                 ++__ack_counter;
                 __pending_ack.push_back(message.sender);
             }
             else
             {
                 fmt::print("Received WMREQ from {}, sending ACK\n", message.sender);
-                ++__lamport;
-                MPI_Send(&__lamport, 1, MPI_LONG_LONG, message.sender, WINEMAKER_AQUIRE_ACK, MPI_COMM_WORLD);
+                ++__timestamp;
+                MPI_Send(&__timestamp, 1, MPI_LONG_LONG, message.sender, WINEMAKER_AQUIRE_ACK, MPI_COMM_WORLD);
             }
         }
         else if (message.type == Message::Type::WMACK && __acquiring_safehouse)
         {
             fmt::print("Received WMACK from {}\n", message.sender);
-            __lamport = std::max(__lamport, message.content.ack.lamport_timestamp);
+            __timestamp = std::max(__timestamp, message.content.ack.lamport_timestamp);
             ++__ack_counter;
         }
 
@@ -140,8 +177,8 @@ namespace nouveaux
         __acquiring_safehouse = true;
         fmt::print("__acquiring_safehouse set to true.\n");
 
-        const uint64_t message[2] = {++__lamport, __safehouse};
-        __last_req_lamport = __lamport;
+        const uint64_t message[2] = {++__timestamp, __safehouse};
+        __current_priority = __timestamp;
 
         fmt::print("Message: ({}, {})\n", message[0], message[1]);
 
@@ -177,15 +214,15 @@ TEST_SUITE("winemaker::Winemaker")
     TEST_CASE("produce")
     {
         fmt::print("Creating winemaker.\n");
-        auto maker = Winemaker(10, {0, 1}, 1, 10);
+        auto maker = Winemaker::builder(10, {0, 1}).wine_volume(1, 10).build();
         fmt::print("Entering command section.");
         maker.run();
         fmt::print("maker.produce() finished.\n");
         fmt::print("Entering assertions section.\n");
         CHECK(maker.__safehouse_acquired);
         CHECK(maker.__ack_counter == 0);
-        CHECK(maker.__lamport == 2);
-        CHECK(maker.__last_req_lamport == 1);
+        CHECK(maker.__timestamp == 2);
+        CHECK(maker.__current_priority == 1);
         fmt::print("Leaving assertions section.\n");
     }
 }

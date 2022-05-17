@@ -4,19 +4,18 @@
 #include <cstdint>
 #include <vector>
 #include <array>
-#include <mutex>
 
 #include "message.hpp"
 
 namespace nouveaux
 {
-    class Student {
+    class Student
+    {
         // `__rng` and `__dist` are for "utilizing" wine.
         std::mt19937 __rng;
         std::uniform_int_distribution<> __dist;
-        // For simplicity & scalability every winemaker tries to acquire every time the same safehouse.
-        // By convention this safehouse will be <winemakers id> mod <safehouse count>.
-        uint64_t __safehouse;
+        //
+
         // Range of winemakers' ids.
         std::array<uint32_t, 2> __winemakers;
         uint32_t __students_count;
@@ -44,13 +43,11 @@ namespace nouveaux
     private:
         auto handle_message(Message message) -> void;
         auto listen_for_messages() -> void;
-        auto acquire_safe_place() -> std::size_t; 
+        auto acquire_safe_place() -> std::size_t;
         auto broadcast(uint32_t volume, std::size_t safe_house) -> void;
 
-    #ifdef __WINEMAKER_TEST__
+#ifdef __WINEMAKER_TEST__
 
-    
-
-    #endif
+#endif
     };
 }
