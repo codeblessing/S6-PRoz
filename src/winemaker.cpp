@@ -8,7 +8,7 @@
 
 namespace nouveaux
 {
-    WinemakerBuilder::WinemakerBuilder(uint64_t safehouse_count, std::array<uint64_t, 2> &&winemakers)
+    Winemaker::Builder::Builder(uint64_t safehouse_count, std::array<uint64_t, 2> &&winemakers)
         : min_wine_volume(1), max_wine_volume(1000), winemakers(std::move(winemakers))
     {
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -17,7 +17,7 @@ namespace nouveaux
         safehouse = rank % safehouse_count;
     }
 
-    auto WinemakerBuilder::wine_volume(uint32_t min_volume, uint32_t max_volume) -> WinemakerBuilder
+    auto Winemaker::Builder::wine_volume(uint32_t min_volume, uint32_t max_volume) -> Builder
     {
         if (min_volume > max_volume)
         {
@@ -32,7 +32,7 @@ namespace nouveaux
         return *this;
     }
 
-    auto WinemakerBuilder::build() -> Winemaker
+    auto Winemaker::Builder::build() -> Winemaker
     {
         return Winemaker(rank, system_size, safehouse, std::move(winemakers), min_wine_volume, max_wine_volume);
     }
@@ -48,9 +48,9 @@ namespace nouveaux
     {
     }
 
-    auto Winemaker::builder(uint64_t safehouse_count, std::array<uint64_t, 2> winemakers) -> WinemakerBuilder
+    auto Winemaker::builder(uint64_t safehouse_count, std::array<uint64_t, 2> winemakers) -> Builder
     {
-        return WinemakerBuilder(safehouse_count, std::move(winemakers));
+        return Winemaker::Builder(safehouse_count, std::move(winemakers));
     }
 
     auto Winemaker::run() -> void

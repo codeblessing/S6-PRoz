@@ -10,32 +10,25 @@
 
 namespace nouveaux
 {
-    class Winemaker;
-    
-    /// This class is just a little bloated workaround for nonexisting in C++ lateinit consts.
-    class WinemakerBuilder
-    {
-        int32_t rank;
-        int32_t system_size;
-        uint32_t min_wine_volume;
-        uint32_t max_wine_volume;
-        uint64_t safehouse;
-        std::array<uint64_t, 2> winemakers;
-
-    public:
-        /// Changes possible wine volume boundaries.
-        /// Swaps values if min_volume > max_volume.
-        auto wine_volume(uint32_t min_volume, uint32_t max_volume) -> WinemakerBuilder;
-        auto build() -> Winemaker;
-
-    private:
-        WinemakerBuilder(uint64_t safehouse_count, std::array<uint64_t, 2> &&winemakers);
-
-        friend class Winemaker;
-    };
-
     class Winemaker
     {
+        /// This class is just a little bloated workaround for nonexisting in C++ lateinit consts.
+        class Builder
+        {
+            int32_t rank;
+            int32_t system_size;
+            uint32_t min_wine_volume;
+            uint32_t max_wine_volume;
+            uint64_t safehouse;
+            std::array<uint64_t, 2> winemakers;
+
+        public:
+            Builder(uint64_t safehouse_count, std::array<uint64_t, 2> &&winemakers);
+            /// Changes possible wine volume boundaries.
+            /// Swaps values if min_volume > max_volume.
+            auto wine_volume(uint32_t min_volume, uint32_t max_volume) -> Builder;
+            auto build() -> Winemaker;
+        };
 
 #ifdef __WINEMAKER_TEST__
 
@@ -73,7 +66,7 @@ namespace nouveaux
         ///
         /// `safehouse_count` - number of safehouses.
         /// `winemakers` - first and last index (rank) of winemakers group. Winemakers' indices are expected to create continuous range.
-        static auto builder(uint64_t safehouse_count, std::array<uint64_t, 2> winemakers_index_range) -> WinemakerBuilder;
+        static auto builder(uint64_t safehouse_count, std::array<uint64_t, 2> winemakers) -> Builder;
         auto run() -> void;
 
     private:
@@ -81,10 +74,8 @@ namespace nouveaux
         auto produce() -> void;
         auto handle_message(Message message) -> void;
         auto listen_for_messages() -> void;
-        auto acquire_safe_place() -> void;  
+        auto acquire_safe_place() -> void;
         auto broadcast(uint32_t volume, uint64_t safe_house) -> void;
-
-        friend class WinemakerBuilder;
     };
 
 }
