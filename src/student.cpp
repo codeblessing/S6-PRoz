@@ -77,7 +77,7 @@ namespace nouveaux
                 }
                 else if (type == Message::Type::STACK)
                 {
-                    memcpy(&content.wm_ack, &buffer, sizeof(uint64_t));
+                    memcpy(&content.st_ack, &buffer, sizeof(uint64_t) * 2);
                 }
                 else if (type == Message::Type::WMINFO)
                 {
