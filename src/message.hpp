@@ -26,15 +26,16 @@ namespace nouveaux
                 uint64_t safehouse_index;
             } wm_req;
 
-            // Winemaker/Student ACK
+            // Winemaker ACK
             struct
             {
                 uint64_t lamport_timestamp;
-            } ack;
+            } wm_ack;
 
             // Winemaker BROADCAST
             struct
             {
+                uint64_t lamport_timestamp;
                 uint64_t safehouse_index;
                 uint64_t wine_volume;
             } wm_info;
@@ -47,9 +48,17 @@ namespace nouveaux
                 uint64_t wine_volume;
             } st_req;
 
+            // Student ACK
+            struct
+            {
+                uint64_t lamport_timestamp;
+                uint64_t safehouse_index;
+            } st_ack;
+
             // Student BROADCAST
             struct
             {
+                uint64_t lamport_timestamp;
                 uint64_t safehouse_index;
             } st_info;
         };

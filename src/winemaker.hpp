@@ -66,11 +66,11 @@ namespace nouveaux
         ///
         /// `safehouse_count` - number of safehouses.
         /// `winemakers` - first and last index (rank) of winemakers group. Winemakers' indices are expected to create continuous range.
-        static auto builder(uint64_t safehouse_count, std::array<uint64_t, 2> winemakers) -> Builder;
+        static auto builder(uint64_t safehouse_count, std::array<uint64_t, 2> &&winemakers) -> Builder;
         auto run() -> void;
 
     private:
-        Winemaker(int32_t rank, int32_t system_size, uint64_t safehouse, std::array<uint64_t, 2> winemakers, uint32_t min_wine_volume, uint32_t max_wine_volume);
+        Winemaker(int32_t rank, int32_t system_size, uint64_t safehouse, std::array<uint64_t, 2> &&winemakers, uint32_t min_wine_volume, uint32_t max_wine_volume);
         auto produce() -> void;
         auto handle_message(Message message) -> void;
         auto listen_for_messages() -> void;
