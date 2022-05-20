@@ -51,7 +51,7 @@ namespace nouveaux
         // Lamport logical clock for message timestamps.
         uint64_t __timestamp;
         // Lamport clock state for last sent REQ message.
-        uint64_t __current_priority;
+        uint64_t __priority;
         // Number of received ACKs when acquiring safehouse.
         uint64_t __ack_counter;
         // In progress safehouse acquisition indicator.

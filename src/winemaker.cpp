@@ -138,7 +138,7 @@ namespace nouveaux
         {
             // If received request has lower priority (higher lamport clock) then we can treat this as ACK
             // but we need to remember to send ACK when we will free the safehouse.
-            if (__acquiring_safehouse && message.content.wm_req.lamport_timestamp > __current_priority && message.content.wm_req.safehouse_index == __safehouse)
+            if (__acquiring_safehouse && message.content.wm_req.lamport_timestamp > __priority && message.content.wm_req.safehouse_index == __safehouse)
             {
                 __timestamp = std::max(__timestamp, message.content.wm_req.lamport_timestamp);
                 ++__ack_counter;
@@ -172,7 +172,7 @@ namespace nouveaux
         __acquiring_safehouse = true;
 
         const uint64_t message[2] = {++__timestamp, __safehouse};
-        __current_priority = __timestamp;
+        __priority = __timestamp;
 
         // Send REQ message for all winemakers.
         for (auto receiver = __winemakers[0]; receiver <= __winemakers[1]; ++receiver)
@@ -209,7 +209,7 @@ TEST_SUITE("winemaker::Winemaker")
         CHECK(maker.__safehouse_acquired);
         CHECK(maker.__ack_counter == 0);
         CHECK(maker.__timestamp >= size);
-        CHECK(maker.__current_priority == 1);
+        CHECK(maker.__priority == 1);
     }
 }
 

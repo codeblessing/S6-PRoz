@@ -10,6 +10,8 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
+// TODO 1: Check & fix UBs connected with unsigned overflows (especially in __safehouses).
+
 namespace nouveaux
 {
 
@@ -30,16 +32,70 @@ namespace nouveaux
 
     auto Student::run() -> void
     {
+        consume();
+        listen_for_messages();
     }
 
     auto Student::consume() -> void
     {
-        __remaining_wine_demand = __dist(__rng);
+        if (__demand <= 0)
+            __demand = __dist(__rng);
         acquire_safe_place();
     }
 
     auto Student::handle_message(Message message) -> void
-    {
+    { // If we get info that our safehouse has been freed & we're not trying to acquire it yet, now we do.
+        __timestamp = std::max(__timestamp, message.content.st_req.lamport_timestamp);
+        if (message.type == Message::Type::WMINFO)
+        {
+            __safehouses[message.content.wm_info.safehouse_index] = message.content.wm_info.wine_volume;
+        }
+        else if (message.type == Message::Type::STREQ)
+        {
+            auto [timestamp, index, volume] = message.content.st_req;
+            // If received request has lower priority (higher lamport clock) then we can treat this as ACK
+            // but we need to remember to send ACK when we will free the safehouse.
+            if (__acquiring_safehouse && index == __safehouse)
+            {
+                if (timestamp > __priority)
+                {
+                    ++__ack_counter;
+                    __pending_ack.emplace_back(message.sender, index);
+                }
+                else
+                {
+                    __safehouses[index] -= volume;
+                    if (__safehouses[index] < 1)
+                    {
+                        // This one has taken all wine from our safehouse, so we
+                        // invalidate our current acquisition and request other safehouse.
+                        __ack_counter = 0;
+                        consume();
+                    }
+                }
+            }
+            else
+            {
+                uint64_t buffer[2] = {++__timestamp, index};
+                MPI_Send(&buffer, 2, MPI_LONG_LONG, message.sender, WINEMAKER_ACQUIRE_ACK, MPI_COMM_WORLD);
+            }
+        }
+        else if (message.type == Message::Type::STACK && __acquiring_safehouse)
+        {
+            if (message.content.st_ack.safehouse_index == __safehouse)
+                ++__ack_counter;
+        }
+
+        // If we hit all ACKs we're holding safehouse.
+        if (__ack_counter == __students_count)
+        {
+            fmt::print("Student #{} acquired safehouse {}.\n", __rank, __safehouse);
+            __acquiring_safehouse = false;
+            __ack_counter = 0;
+            // TODO 2: Implement logic for mutating state of wine demand.
+
+            // broadcast(__safehouse);
+        }
     }
 
     auto Student::listen_for_messages() -> void
@@ -47,8 +103,7 @@ namespace nouveaux
 #ifdef __WINEMAKER_TEST__
         int size;
         MPI_Comm_size(MPI_COMM_WORLD, &size);
-        // TODO: Fix this, so it can handla cases with > 2 processes.
-        for (int i = 0; i < size; ++i)
+        for (int i = 0; i < 2 * size - 2; ++i)
 #else
         while (true)
 #endif
@@ -102,7 +157,7 @@ namespace nouveaux
         int64_t min_nonnegative_value = std::numeric_limits<int64_t>::min();
         for (auto i = 0; i < __safehouses.size(); ++i)
         {
-            auto diff = static_cast<int64_t>(__safehouses[i]) - static_cast<int64_t>(__remaining_wine_demand);
+            auto diff = static_cast<int64_t>(__safehouses[i]) - static_cast<int64_t>(__demand);
             if (diff < 0 && diff > min_negative_value)
             {
                 min_negative_value = diff;
@@ -122,7 +177,7 @@ namespace nouveaux
             __acquiring_safehouse = true;
         }
         // Otherwise we choose the one with minimal deficiency (unless this deficiency is lower than our demand).
-        else if (min_negative_value > -__remaining_wine_demand)
+        else if (min_negative_value > -__demand)
         {
             __safehouse = index_min_negative;
             __acquiring_safehouse == true;
@@ -132,7 +187,8 @@ namespace nouveaux
 
         if (__acquiring_safehouse)
         {
-            uint64_t buffer[3] = {++__timestamp, __safehouse, __remaining_wine_demand};
+            uint64_t buffer[3] = {++__timestamp, __safehouse, __demand};
+            __priority = __timestamp;
             for (auto receiver = __students[0]; receiver <= __students[1]; ++receiver)
                 MPI_Send(&buffer, 3, MPI_LONG_LONG, receiver, STUDENT_ACQUIRE_REQ, MPI_COMM_WORLD);
         }
