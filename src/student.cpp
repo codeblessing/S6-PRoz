@@ -14,14 +14,14 @@
 
 namespace nouveaux
 {
-
-    Student::Student(uint64_t safehouse_count, int32_t rank, int32_t system_size, std::array<uint64_t, 2> &&students, uint32_t min_wine_volume, uint32_t max_wine_volume)
+    Student::Student(uint64_t safehouse_count, int32_t rank, uint64_t students_start_id, uint64_t students_count, uint64_t winemakers_start_id, uint64_t winemakers_count, uint32_t min_wine_volume, uint32_t max_wine_volume)
         : __rng(std::random_device()()),
           __dist(min_wine_volume, max_wine_volume),
-          __students(std::move(students)),
-          __students_count(__students[1] - __students[0]),
-          __rank(rank),
-          __system_size(system_size)
+          __students_start_id(students_start_id),
+          __students_count(students_count),
+          __winemakers_start_id(winemakers_start_id),
+          __winemakers_count(winemakers_count),
+          __rank(rank)
     {
         __safehouses.reserve(safehouse_count);
         for (uint64_t i = 0; i < safehouse_count; ++i)
@@ -32,25 +32,57 @@ namespace nouveaux
 
     auto Student::run() -> void
     {
-        consume();
+        satisfy_demand();
         listen_for_messages();
+    }
+
+    auto Student::demand() -> void
+    {
+        if (__demand == 0)
+            __demand = __dist(__rng);
     }
 
     auto Student::consume() -> void
     {
-        if (__demand <= 0)
-            __demand = __dist(__rng);
-        acquire_safe_place();
+        // If we hit all ACKs we're holding safehouse.
+        if (__ack_counter == __students_count)
+        {
+            fmt::print("Student #{} acquired safehouse {}.\n", __rank, __safehouse);
+            __acquiring_safehouse = false;
+            __ack_counter = 0;
+
+            if (__safehouses[__safehouse] >= __demand)
+            {
+                __safehouses[__safehouse] -= __demand;
+                __demand = 0;
+            }
+            else
+            {
+                __demand -= __safehouses[__safehouse];
+                __safehouses[__safehouse] = 0;
+                broadcast(__safehouse);
+            }
+
+            for (auto [receiver, index] : __pending_ack)
+            {
+                uint64_t message[2] = {++__timestamp, index};
+                MPI_Send(&message, 2, MPI_LONG_LONG, receiver, STUDENT_ACQUIRE_ACK, MPI_COMM_WORLD);
+            }
+        }
     }
 
     auto Student::handle_message(Message message) -> void
     { // If we get info that our safehouse has been freed & we're not trying to acquire it yet, now we do.
         __timestamp = std::max(__timestamp, message.content.st_req.lamport_timestamp);
-        if (message.type == Message::Type::WMINFO)
+
+        switch (message.type)
+        {
+        case Message::Type::WMINFO:
         {
             __safehouses[message.content.wm_info.safehouse_index] = message.content.wm_info.wine_volume;
+            break;
         }
-        else if (message.type == Message::Type::STREQ)
+        case Message::Type::STREQ:
         {
             auto [timestamp, index, volume] = message.content.st_req;
             // If received request has lower priority (higher lamport clock) then we can treat this as ACK
@@ -70,7 +102,7 @@ namespace nouveaux
                         // This one has taken all wine from our safehouse, so we
                         // invalidate our current acquisition and request other safehouse.
                         __ack_counter = 0;
-                        consume();
+                        satisfy_demand();
                     }
                 }
             }
@@ -79,23 +111,19 @@ namespace nouveaux
                 uint64_t buffer[2] = {++__timestamp, index};
                 MPI_Send(&buffer, 2, MPI_LONG_LONG, message.sender, WINEMAKER_ACQUIRE_ACK, MPI_COMM_WORLD);
             }
+
+            break;
         }
-        else if (message.type == Message::Type::STACK && __acquiring_safehouse)
+        case Message::Type::STACK:
         {
-            if (message.content.st_ack.safehouse_index == __safehouse)
+            if (__acquiring_safehouse && message.content.st_ack.safehouse_index == __safehouse)
                 ++__ack_counter;
         }
-
-        // If we hit all ACKs we're holding safehouse.
-        if (__ack_counter == __students_count)
-        {
-            fmt::print("Student #{} acquired safehouse {}.\n", __rank, __safehouse);
-            __acquiring_safehouse = false;
-            __ack_counter = 0;
-            // TODO 2: Implement logic for mutating state of wine demand.
-
-            // broadcast(__safehouse);
+        default:
+            break;
         }
+
+        consume();
     }
 
     auto Student::listen_for_messages() -> void
@@ -151,6 +179,7 @@ namespace nouveaux
 
     auto Student::acquire_safe_place() -> void
     {
+        // TODO: Fix this function.
         int index_min_nonnegative = 0;
         int index_min_negative = 0;
         int64_t min_negative_value = std::numeric_limits<int64_t>::max();
@@ -189,13 +218,16 @@ namespace nouveaux
         {
             uint64_t buffer[3] = {++__timestamp, __safehouse, __demand};
             __priority = __timestamp;
-            for (auto receiver = __students[0]; receiver <= __students[1]; ++receiver)
+            for (auto receiver = __students_start_id; receiver <= __students_start_id + __students_count; ++receiver)
                 MPI_Send(&buffer, 3, MPI_LONG_LONG, receiver, STUDENT_ACQUIRE_REQ, MPI_COMM_WORLD);
         }
     }
 
-    auto Student::broadcast(uint64_t safe_house) -> void
+    auto Student::broadcast(uint64_t safehouse) -> void
     {
+        uint64_t buffer[2] = {++__timestamp, safehouse};
+        for (auto receiver = __winemakers_start_id; receiver < __winemakers_start_id + __winemakers_count; ++receiver)
+            MPI_Send(&buffer, 2, MPI_LONG_LONG, receiver, STUDENT_BROADCAST, MPI_COMM_WORLD);
     }
 
 }

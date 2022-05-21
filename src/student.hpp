@@ -59,42 +59,38 @@ namespace nouveaux
         //
         // MUTABILITY: Should change only in two places:
         //     1) When starting safeplace acquisition in acquire_safe_place() method.
-        //     2) When student acquire safehouse in handle_message() method. 
+        //     2) When student acquire safehouse in handle_message() method.
         bool __acquiring_safehouse;
-        // List of processes waiting for ACK.
+        // List of processes waiting for ACK with corresponding safehouse index.
         //
         // MUTABILITY: Should change only in two places:
         //     1) When received STUDENT_ACQUISITION_REQ message with apropriate safehouse index and higher timestamp than current priority.
         //     2) When student acquired safehouse and modified apropriate values.
         std::vector<std::tuple<uint64_t, uint64_t>> __pending_ack;
-        // TODO 3: Replace this with single start point of students' ids range and students' count.
-        // Range of students' ids.
-        std::array<uint64_t, 2> __students;
+        // Lower (inclusive) bound of students' ids.
+        const uint64_t __students_start_id;
         // Number of students.
-        uint32_t __students_count;
-        // TODO 4: Same as TODO 3.
-        // Range of winemakers' ids.
-        std::array<uint64_t, 2> __winemakers;
+        const uint64_t __students_count;
+        // Lower (inclusive) bound of winemakers' ids.
+        const uint64_t __winemakers_start_id;
+        // Number of winemakers.
+        const uint64_t __winemakers_count;
         // Process's own id.
         //
         // MUTABILITY: Immutable. Should never be changed outside of constructor call.
         int32_t __rank;
-        // Number of working processes.
-        //
-        // MUTABILITY: Immutable. Should never be changed outside of constructor call.
-        int32_t __system_size;
 
     public:
-        Student(uint64_t safehouse_count, int32_t rank, int32_t system_size, std::array<uint64_t, 2> &&students, uint32_t min_wine_volume, uint32_t max_wine_volume);
+        Student(uint64_t safehouse_count, int32_t rank, uint64_t students_start_id, uint64_t students_count, uint64_t winemakers_start_id, uint64_t winemakers_count, uint32_t min_wine_volume, uint32_t max_wine_volume);
         auto run() -> void;
 
     private:
-        // TODO 5: Implement demand() method.
         auto demand() -> void;
         auto consume() -> void;
+        auto satisfy_demand() -> void;
         auto handle_message(Message message) -> void;
         auto listen_for_messages() -> void;
         auto acquire_safe_place() -> void;
-        auto broadcast(uint64_t safe_house) -> void;
+        auto broadcast(uint64_t safehouse) -> void;
     };
 }
