@@ -50,21 +50,16 @@ namespace nouveaux {
         // If we hit all ACKs we're holding safehouse.
         if (__ack_counter == __students_count - 1) {
             fmt::print("Student #{} acquired safehouse {}.\n", __rank, __safehouse);
-            __acquiring_safehouse = false;
-            __ack_counter = 0;
-
-            if (__safehouses[__safehouse] >= __demand) {
-                __safehouses[__safehouse] -= __demand;
-                __demand = 0;
-            } else {
-                __demand -= __safehouses[__safehouse];
-                __safehouses[__safehouse] = 0;
+            const uint64_t volume = std::min(__safehouses[__safehouse], static_cast<uint64_t>(__demand));
+            __safehouses[__safehouse] -= volume;
+            __demand -= volume;
+            if (__safehouses[__safehouse] < 1) {
                 send_broadcast(__safehouse);
             }
             fmt::print("Student #{} reports state:\n\tdemand: {}\n\tsafehouse #{}: {}\n", __rank, __demand, __safehouse, __safehouses[__safehouse]);
             fmt::print("Student #{} releases safehouse #{}.\n", __rank, __safehouse);
 
-            send_pending_acks();
+            acquisition_cleanup();
 
             satisfy_demand();
         }
@@ -80,41 +75,41 @@ namespace nouveaux {
 
         switch (message.type) {
             case Message::Type::WINEMAKER_BROADCAST: {
-                fmt::print("Student #{} received BROADCAST from winemaker #{}.\n", __rank, message.sender);
+                // fmt::print("Student #{} received BROADCAST from winemaker #{}.\n", __rank, message.sender);
                 __safehouses[message.payload.safehouse_index] = message.payload.wine_volume;
                 // If we're not currently acquiring safehouse (so either we had no demand or all safehouses were empty)
-                if (!__acquiring_safehouse)
+                if (!__acquiring_safehouse) {
                     satisfy_demand();
+                }
                 break;
             }
-            // case Message::Type::STUDENT_REQUEST: {
-            //     // If received request has lower priority (higher lamport clock) then we can treat this as ACK
-            //     // but we need to remember to send ACK when we will free the safehouse.
-            //     if (__acquiring_safehouse && message.payload.safehouse_index == __safehouse) {
-            //         if (message.timestamp > __priority || (message.timestamp == __priority && message.sender > __rank)) {
-            //             ++__ack_counter;
-            //             __pending_acks.emplace_back(message);
-            //         } else {
-            //             __safehouses[message.payload.safehouse_index] -= message.payload.wine_volume;
-            //             if (__safehouses[message.payload.safehouse_index] < 1) {
-            //                 // This one has taken all wine from our safehouse, so we
-            //                 // invalidate our current acquisition and request other safehouse.
-            //                 acquisition_cleanup();
-            //                 satisfy_demand();
-            //             }
-            //         }
-            //     } else {
-            //         send_pending_acks();
-            //     }
+            case Message::Type::STUDENT_REQUEST: {
+                // fmt::print("Student #{} received REQUEST message from student #{}.\nMessage details:\n\ttimestamp: {}\n\tsafehouse: {}\n\tvolume: {}\n", __rank, message.sender, message.timestamp, message.payload.safehouse_index, message.payload.wine_volume);
+                const uint64_t volume = std::min(__safehouses[message.payload.safehouse_index], message.payload.wine_volume);
 
-            //     break;
-            // }
-            // case Message::Type::STUDENT_ACKNOWLEDGE: {
-            //     if (__acquiring_safehouse && message.payload.safehouse_index == __safehouse)
-            //         ++__ack_counter;
-            // }
+                if (message.payload.safehouse_index == __safehouse) {
+                    if ((message.timestamp > __priority) || ((message.timestamp == __priority) && (message.sender > __rank))) {
+                        ++__ack_counter;
+                        __pending_acks.emplace_back(message);
+                    } else {
+                        __safehouses[message.payload.safehouse_index] -= volume;
+                        if (__safehouses[message.payload.safehouse_index] < 1) {
+                            // Invalidate current acquisition and try another one.
+                            acquisition_cleanup();
+                            satisfy_demand();
+                        }
+                    }
+                } else {
+                    __safehouses[message.payload.safehouse_index] -= volume;
+                    send_ack(message.sender, message.payload.safehouse_index);
+                }
+                break;
+            }
+            case Message::Type::STUDENT_ACKNOWLEDGE: {
+                if (__acquiring_safehouse && message.payload.safehouse_index == __safehouse)
+                    ++__ack_counter;
+            }
             default:
-                fmt::print("Student #{} received OTHER message.\n", __rank);
                 break;
         }
 
@@ -160,20 +155,9 @@ namespace nouveaux {
         __ack_counter = 0;
         __acquiring_safehouse = false;
 
-        send_pending_acks();
-    }
-
-    auto Student::send_pending_acks() -> void {
-        for (auto&& [_type, receiver, _timestamp, payload] : __pending_acks) {
-            // Safehouse state must be updated if we haven't used all the wine from it.
-            const auto volume_taken = std::min(__safehouses[payload.safehouse_index], payload.wine_volume);
-            __safehouses[payload.safehouse_index] -= volume_taken;
-
-            fmt::print("Student #{} sends ACK({}) to #{}.\n", __rank, payload.safehouse_index, receiver);
-            send_ack(receiver, payload.safehouse_index);
+        for (auto&& message : __pending_acks) {
+            send_ack(message.sender, message.payload.safehouse_index);
         }
-
-        __pending_acks.clear();
     }
 
     auto Student::send_req() -> void {

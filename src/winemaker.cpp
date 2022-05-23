@@ -31,7 +31,7 @@ namespace nouveaux {
     }
 
     auto Winemaker::produce() -> void {
-        fmt::print("Winemaker #{} acquired safehouse #{}", __rank, __safehouse);
+        fmt::print("Winemaker #{} acquired safehouse #{}\n", __rank, __safehouse);
         __acquiring_safehouse = false;
         __acquired_safehouse = true;
 
@@ -56,7 +56,7 @@ namespace nouveaux {
 
         switch (message.type) {
             case Message::Type::WINEMAKER_REQUEST: {
-                fmt::print("Winemaker #{} received REQUEST message from winemaker #{}.\nMessage details:\n\ttimestamp: {}\n\tsafehouse: {}\n", __rank, message.sender, message.timestamp, message.payload.safehouse_index);
+                // fmt::print("Winemaker #{} received REQUEST message from winemaker #{}.\nMessage details:\n\ttimestamp: {}\n\tsafehouse: {}\n", __rank, message.sender, message.timestamp, message.payload.safehouse_index);
                 if (message.payload.safehouse_index == __safehouse) {
                     if ((message.timestamp > __priority) || ((message.timestamp == __priority) && (message.sender > __rank))) {
                         ++__ack_counter;
@@ -72,7 +72,7 @@ namespace nouveaux {
                 break;
             }
             case Message::Type::STUDENT_BROADCAST: {
-                fmt::print("Winemaker #{} received BROADCAST message from Student #{}.\n", __rank, message.sender);
+                // fmt::print("Winemaker #{} received BROADCAST message from Student #{}.\n", __rank, message.sender);
                 if (message.payload.safehouse_index == __safehouse) {
                     if (__acquired_safehouse) {
                         fmt::print("Winemaker #{} freed safehouse #{}.\n", __rank, __safehouse);

@@ -11,7 +11,7 @@ SRCS = src/*.cpp $(FMT)/src/format.cc $(FMT)/src/os.cc
 .DEFAULT_GOAL := build
 
 run: build
-	mpirun -np 3 ./bin/winemaker
+	mpirun -np 10 ./bin/winemaker
 
 build: compile
 	mpicxx $(CXX_FLAGS) obj/*.o -o winemaker && mv winemaker bin/
