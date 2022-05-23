@@ -1,81 +1,80 @@
 #pragma once
 
-#include <random>
 #include <cstdint>
+#include <random>
 #include <vector>
-#include <array>
-#include <mutex>
 
 #include "message.hpp"
 
-namespace nouveaux
-{
-    class Winemaker
-    {
-        /// This class is just a little bloated workaround for nonexisting in C++ lateinit consts.
-        class Builder
-        {
-            int32_t rank;
-            int32_t system_size;
-            uint32_t min_wine_volume;
-            uint32_t max_wine_volume;
-            uint64_t safehouse;
-            std::array<uint64_t, 2> winemakers;
-
-        public:
-            Builder(uint64_t safehouse_count, std::array<uint64_t, 2> &&winemakers);
-            /// Changes possible wine volume boundaries.
-            /// Swaps values if min_volume > max_volume.
-            auto wine_volume(uint32_t min_volume, uint32_t max_volume) -> Builder;
-            auto build() -> Winemaker;
-        };
-
-#ifdef __WINEMAKER_TEST__
-
-    public:
+namespace nouveaux {
+    class Winemaker {
+#if defined(__WINEMAKER_DEBUG__)
+      public:
 #endif
-        // `__rng` and `__dist` are for "producing" wine.
+        // Random number generator for generating wine supply.
         std::mt19937 __rng;
+        // Random number distribution for limiting possible supply.
+        // In theory this could be **any** distribution, uniform was just arbitrarily chosen.
         std::uniform_int_distribution<> __dist;
+        // Lamport logical clock for message timestamps.
+        //
+        // MUTABILITY: Should change every time message is sent or received.
+        uint64_t __timestamp;
+        // Lamport clock state for last sent REQ message.
+        //
+        // MUTABILITY: Should change only when REQ message is being sent.
+        uint64_t __priority;
         // For simplicity & scalability every winemaker tries to acquire every time the same safehouse.
         // By convention this safehouse will be <winemakers id> mod <safehouse count>.
         const uint64_t __safehouse;
-        // Range of winemakers' ids.
-        std::array<uint64_t, 2> __winemakers;
-        // Number of winemakers.
-        uint32_t __winemakers_count;
-        // Process's own id.
-        int32_t __rank;
-        // Number of working processes.
-        int32_t __system_size;
-        // Lamport logical clock for message timestamps.
-        uint64_t __timestamp;
-        // Lamport clock state for last sent REQ message.
-        uint64_t __priority;
         // Number of received ACKs when acquiring safehouse.
+        //
+        // MUTABILITY: Should change only in two places (both in handle_message() method):
+        //     1) When received STUDENT_ACQUISITION_ACK message with apropriate safehouse index.
+        //     2) When received STUDENT_ACQUISITION_REQ message with apropriate safehouse index and higher timestamp than current priority.
         uint64_t __ack_counter;
         // In progress safehouse acquisition indicator.
+        //
+        // MUTABILITY: Should change only in two places:
+        //     1) When starting safeplace acquisition in acquire_safe_place() method.
+        //     2) When student acquire safehouse in handle_message() method.
         bool __acquiring_safehouse;
-        // We're holding the safehouse;
-        bool __safehouse_acquired;
-        // List of processes waiting for ACK.
-        std::vector<uint64_t> __pending_ack;
+        // Safehouse ownership indicator.
+        //
+        // MUTABILITY: Should change only in two places:
+        //     1) When winemaker acquires safehouse.
+        //     2) When received STUDENT_BROADCAST message with appropriate safehouse index.
+        bool __acquired_safehouse;
+        // List of processes waiting for ACK with corresponding safehouse index.
+        //
+        // MUTABILITY: Should change only in two places:
+        //     1) When received STUDENT_ACQUISITION_REQ message with apropriate safehouse index and higher timestamp than current priority.
+        //     2) When student acquired safehouse and modified apropriate values.
+        std::vector<Message> __pending_acks;
+        // Lower (inclusive) bound of students' ids.
+        const uint64_t __students_start_id;
+        // Number of students.
+        const uint64_t __students_count;
+        // Lower (inclusive) bound of winemakers' ids.
+        const uint64_t __winemakers_start_id;
+        // Number of winemakers.
+        const uint64_t __winemakers_count;
+        // Process's own id.
+        const uint32_t __rank;
 
-    public:
-        /// Creates Winemaker class builder.
-        ///
-        /// `safehouse_count` - number of safehouses.
-        /// `winemakers` - first and last index (rank) of winemakers group. Winemakers' indices are expected to create continuous range.
-        static auto builder(uint64_t safehouse_count, std::array<uint64_t, 2> &&winemakers) -> Builder;
+      public:
+        Winemaker(uint64_t safehouse_count, uint32_t rank, uint64_t students_start_id, uint64_t students_count, uint64_t winemakers_start_id, uint64_t winemakers_count, uint32_t min_wine_volume, uint32_t max_wine_volume);
         auto run() -> void;
 
-    private:
-        Winemaker(int32_t rank, int32_t system_size, uint64_t safehouse, std::array<uint64_t, 2> &&winemakers, uint32_t min_wine_volume, uint32_t max_wine_volume);
+      private:
         auto produce() -> void;
         auto handle_message(Message message) -> void;
         auto listen_for_messages() -> void;
         auto acquire_safe_place() -> void;
-        auto broadcast(uint32_t volume, uint64_t safe_house) -> void;
+
+        auto send_req() -> void;
+        auto send_ack(uint64_t receiver) -> void;
+        auto send_broadcast(uint32_t volume) -> void;
     };
 
 }

@@ -1,19 +1,15 @@
 #pragma once
 
-#include <random>
 #include <cstdint>
+#include <random>
 #include <vector>
-#include <array>
-#include <tuple>
 
 #include "message.hpp"
 
-namespace nouveaux
-{
-    class Student
-    {
-#ifdef __WINEMAKER_TEST__
-    public:
+namespace nouveaux {
+    class Student {
+#if defined(__WINEMAKER_DEBUG__)
+      public:
 #endif
         // Random number generator for generating wine demand.
         std::mt19937 __rng;
@@ -66,7 +62,7 @@ namespace nouveaux
         // MUTABILITY: Should change only in two places:
         //     1) When received STUDENT_ACQUISITION_REQ message with apropriate safehouse index and higher timestamp than current priority.
         //     2) When student acquired safehouse and modified apropriate values.
-        std::vector<std::tuple<uint64_t, uint64_t>> __pending_ack;
+        std::vector<Message> __pending_acks;
         // Lower (inclusive) bound of students' ids.
         const uint64_t __students_start_id;
         // Number of students.
@@ -76,21 +72,24 @@ namespace nouveaux
         // Number of winemakers.
         const uint64_t __winemakers_count;
         // Process's own id.
-        //
-        // MUTABILITY: Immutable. Should never be changed outside of constructor call.
-        int32_t __rank;
+        const uint32_t __rank;
 
-    public:
-        Student(uint64_t safehouse_count, int32_t rank, uint64_t students_start_id, uint64_t students_count, uint64_t winemakers_start_id, uint64_t winemakers_count, uint32_t min_wine_volume, uint32_t max_wine_volume);
+      public:
+        Student(uint64_t safehouse_count, uint32_t rank, uint64_t students_start_id, uint64_t students_count, uint64_t winemakers_start_id, uint64_t winemakers_count, uint32_t min_wine_volume, uint32_t max_wine_volume);
         auto run() -> void;
 
-    private:
+      private:
         auto demand() -> void;
         auto consume() -> void;
         auto satisfy_demand() -> void;
         auto handle_message(Message message) -> void;
         auto listen_for_messages() -> void;
         auto acquire_safe_place() -> void;
-        auto broadcast(uint64_t safehouse) -> void;
+
+        auto acquisition_cleanup() -> void;
+        auto send_req() -> void;
+        auto send_ack(uint64_t receiver, uint64_t safehouse) -> void;
+        auto send_broadcast(uint64_t safehouse) -> void;
+        auto send_pending_acks() -> void;
     };
 }

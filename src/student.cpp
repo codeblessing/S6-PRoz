@@ -2,234 +2,230 @@
 
 #include <algorithm>
 
-#include <mpi/mpi.h>
 #include <fmt/format.h>
+#include <mpi/mpi.h>
 
 #include "tags.hpp"
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
+// !!! DEBUG !!!
+#include <chrono>
+#include <thread>
+using namespace std::chrono_literals;
+// !!! /DEBUG !!!
 
-// TODO 1: Check & fix UBs connected with unsigned overflows (especially in __safehouses).
-
-namespace nouveaux
-{
-    Student::Student(uint64_t safehouse_count, int32_t rank, uint64_t students_start_id, uint64_t students_count, uint64_t winemakers_start_id, uint64_t winemakers_count, uint32_t min_wine_volume, uint32_t max_wine_volume)
-        : __rng(std::random_device()()),
-          __dist(min_wine_volume, max_wine_volume),
-          __students_start_id(students_start_id),
-          __students_count(students_count),
-          __winemakers_start_id(winemakers_start_id),
-          __winemakers_count(winemakers_count),
-          __rank(rank)
-    {
+namespace nouveaux {
+    Student::Student(uint64_t safehouse_count, uint32_t rank, uint64_t students_start_id, uint64_t students_count, uint64_t winemakers_start_id, uint64_t winemakers_count, uint32_t min_wine_volume, uint32_t max_wine_volume)
+      : __rng(std::random_device()()),
+        __dist(min_wine_volume, max_wine_volume),
+        __demand(0),
+        __safehouses({}),
+        __timestamp(0),
+        __priority(0),
+        __safehouse(0),
+        __ack_counter(0),
+        __acquiring_safehouse(false),
+        __pending_acks({}),
+        __students_start_id(students_start_id),
+        __students_count(students_count),
+        __winemakers_start_id(winemakers_start_id),
+        __winemakers_count(winemakers_count),
+        __rank(rank) {
         __safehouses.reserve(safehouse_count);
         for (uint64_t i = 0; i < safehouse_count; ++i)
-        {
             __safehouses.push_back(0);
-        }
     }
 
-    auto Student::run() -> void
-    {
-        satisfy_demand();
+    auto Student::run() -> void {
+        fmt::print("Student #{} is starting.\n", __rank);
         listen_for_messages();
     }
 
-    auto Student::demand() -> void
-    {
+    auto Student::demand() -> void {
         if (__demand == 0)
             __demand = __dist(__rng);
+        fmt::print("Student #{} needs {} wine units.\n", __rank, __demand);
     }
 
-    auto Student::consume() -> void
-    {
+    auto Student::consume() -> void {
         // If we hit all ACKs we're holding safehouse.
-        if (__ack_counter == __students_count)
-        {
+        if (__ack_counter == __students_count - 1) {
             fmt::print("Student #{} acquired safehouse {}.\n", __rank, __safehouse);
             __acquiring_safehouse = false;
             __ack_counter = 0;
 
-            if (__safehouses[__safehouse] >= __demand)
-            {
+            if (__safehouses[__safehouse] >= __demand) {
                 __safehouses[__safehouse] -= __demand;
                 __demand = 0;
-            }
-            else
-            {
+            } else {
                 __demand -= __safehouses[__safehouse];
                 __safehouses[__safehouse] = 0;
-                broadcast(__safehouse);
+                send_broadcast(__safehouse);
             }
+            fmt::print("Student #{} reports state:\n\tdemand: {}\n\tsafehouse #{}: {}\n", __rank, __demand, __safehouse, __safehouses[__safehouse]);
+            fmt::print("Student #{} releases safehouse #{}.\n", __rank, __safehouse);
 
-            for (auto [receiver, index] : __pending_ack)
-            {
-                uint64_t message[2] = {++__timestamp, index};
-                MPI_Send(&message, 2, MPI_LONG_LONG, receiver, STUDENT_ACQUIRE_ACK, MPI_COMM_WORLD);
-            }
+            send_pending_acks();
+
+            satisfy_demand();
         }
     }
 
-    auto Student::handle_message(Message message) -> void
-    { // If we get info that our safehouse has been freed & we're not trying to acquire it yet, now we do.
-        __timestamp = std::max(__timestamp, message.content.st_req.lamport_timestamp);
+    auto Student::satisfy_demand() -> void {
+        demand();
+        acquire_safe_place();
+    }
 
-        switch (message.type)
-        {
-        case Message::Type::WMINFO:
-        {
-            __safehouses[message.content.wm_info.safehouse_index] = message.content.wm_info.wine_volume;
-            break;
-        }
-        case Message::Type::STREQ:
-        {
-            auto [timestamp, index, volume] = message.content.st_req;
-            // If received request has lower priority (higher lamport clock) then we can treat this as ACK
-            // but we need to remember to send ACK when we will free the safehouse.
-            if (__acquiring_safehouse && index == __safehouse)
-            {
-                if (timestamp > __priority)
-                {
-                    ++__ack_counter;
-                    __pending_ack.emplace_back(message.sender, index);
-                }
-                else
-                {
-                    __safehouses[index] -= volume;
-                    if (__safehouses[index] < 1)
-                    {
-                        // This one has taken all wine from our safehouse, so we
-                        // invalidate our current acquisition and request other safehouse.
-                        __ack_counter = 0;
-                        satisfy_demand();
-                    }
-                }
-            }
-            else
-            {
-                uint64_t buffer[2] = {++__timestamp, index};
-                MPI_Send(&buffer, 2, MPI_LONG_LONG, message.sender, WINEMAKER_ACQUIRE_ACK, MPI_COMM_WORLD);
-            }
+    auto Student::handle_message(Message message) -> void {
+        __timestamp = std::max(__timestamp, message.timestamp) + 1;
 
-            break;
-        }
-        case Message::Type::STACK:
-        {
-            if (__acquiring_safehouse && message.content.st_ack.safehouse_index == __safehouse)
-                ++__ack_counter;
-        }
-        default:
-            break;
+        switch (message.type) {
+            case Message::Type::WINEMAKER_BROADCAST: {
+                fmt::print("Student #{} received BROADCAST from winemaker #{}.\n", __rank, message.sender);
+                __safehouses[message.payload.safehouse_index] = message.payload.wine_volume;
+                // If we're not currently acquiring safehouse (so either we had no demand or all safehouses were empty)
+                if (!__acquiring_safehouse)
+                    satisfy_demand();
+                break;
+            }
+            // case Message::Type::STUDENT_REQUEST: {
+            //     // If received request has lower priority (higher lamport clock) then we can treat this as ACK
+            //     // but we need to remember to send ACK when we will free the safehouse.
+            //     if (__acquiring_safehouse && message.payload.safehouse_index == __safehouse) {
+            //         if (message.timestamp > __priority || (message.timestamp == __priority && message.sender > __rank)) {
+            //             ++__ack_counter;
+            //             __pending_acks.emplace_back(message);
+            //         } else {
+            //             __safehouses[message.payload.safehouse_index] -= message.payload.wine_volume;
+            //             if (__safehouses[message.payload.safehouse_index] < 1) {
+            //                 // This one has taken all wine from our safehouse, so we
+            //                 // invalidate our current acquisition and request other safehouse.
+            //                 acquisition_cleanup();
+            //                 satisfy_demand();
+            //             }
+            //         }
+            //     } else {
+            //         send_pending_acks();
+            //     }
+
+            //     break;
+            // }
+            // case Message::Type::STUDENT_ACKNOWLEDGE: {
+            //     if (__acquiring_safehouse && message.payload.safehouse_index == __safehouse)
+            //         ++__ack_counter;
+            // }
+            default:
+                fmt::print("Student #{} received OTHER message.\n", __rank);
+                break;
         }
 
         consume();
     }
 
-    auto Student::listen_for_messages() -> void
-    {
-#ifdef __WINEMAKER_TEST__
-        int size;
-        MPI_Comm_size(MPI_COMM_WORLD, &size);
-        for (int i = 0; i < 2 * size - 2; ++i)
-#else
-        while (true)
-#endif
-        {
-            if (__students_count > 0)
-            {
-                uint64_t buffer[3];
-                MPI_Status status;
-                MPI_Recv(&buffer, 3, MPI_LONG_LONG, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-
-                Message::Type type;
-                if (status.MPI_TAG == STUDENT_ACQUIRE_REQ)
-                    type = Message::Type::STREQ;
-                else if (status.MPI_TAG == STUDENT_ACQUIRE_ACK)
-                    type = Message::Type::STACK;
-                else if (status.MPI_TAG == WINEMAKER_BROADCAST)
-                    type = Message::Type::WMINFO;
-                else
-                    type = Message::Type::UNKNOWN;
-
-                uint64_t sender = status.MPI_SOURCE;
-                Message::Content content;
-                if (type == Message::Type::STREQ)
-                {
-                    memcpy(&content.st_req, &buffer, sizeof(uint64_t) * 3);
-                }
-                else if (type == Message::Type::STACK)
-                {
-                    memcpy(&content.st_ack, &buffer, sizeof(uint64_t) * 2);
-                }
-                else if (type == Message::Type::WMINFO)
-                {
-                    memcpy(&content.wm_info, &buffer, sizeof(uint64_t) * 3);
-                }
-
-                Message message{type, sender, content};
+    auto Student::listen_for_messages() -> void {
+        while (true) {
+            std::this_thread::sleep_for(500ms);
+            if (__students_count < 2 && __acquiring_safehouse) {
+                fmt::print("Student hit the SINGLE STUDENT point.\n");
+                consume();
+            } else {
+                auto message = Message::receive_from(MPI_ANY_SOURCE);
                 handle_message(message);
             }
-            else
-            {
-                handle_message(Message{});
+        }
+    }
+
+    auto Student::acquire_safe_place() -> void {
+        if (__acquiring_safehouse) {
+            fmt::print(stderr, "[STU] ERROR: New acquisition request during active acquisition.\n");
+            return;
+        }
+
+        // TODO: Implement more sophisticated algorithm, that chooses best fit.
+        // Currently used: simplest greedy algorithm that takes first non-empty safehouse.
+        for (auto index = 0; auto&& safehouse : __safehouses) {
+            if (safehouse > 0) {
+                __acquiring_safehouse = true;
+                __safehouse = index;
+                break;
+            }
+        }
+
+        if (__acquiring_safehouse) {
+            fmt::print("Student #{} wants to acquire safehouse #{}\n", __rank, __safehouse);
+            send_req();
+        }
+    }
+
+    auto Student::acquisition_cleanup() -> void {
+        __ack_counter = 0;
+        __acquiring_safehouse = false;
+
+        send_pending_acks();
+    }
+
+    auto Student::send_pending_acks() -> void {
+        for (auto&& [_type, receiver, _timestamp, payload] : __pending_acks) {
+            // Safehouse state must be updated if we haven't used all the wine from it.
+            const auto volume_taken = std::min(__safehouses[payload.safehouse_index], payload.wine_volume);
+            __safehouses[payload.safehouse_index] -= volume_taken;
+
+            fmt::print("Student #{} sends ACK({}) to #{}.\n", __rank, payload.safehouse_index, receiver);
+            send_ack(receiver, payload.safehouse_index);
+        }
+
+        __pending_acks.clear();
+    }
+
+    auto Student::send_req() -> void {
+        __priority = ++__timestamp;
+        Message request {
+            .type = Message::Type::STUDENT_REQUEST,
+            .sender = __rank,
+            .timestamp = __timestamp,
+            .payload = Message::Payload {
+              .safehouse_index = __safehouse,
+              .wine_volume = __demand,
+            },
+        };
+
+        for (auto receiver = __students_start_id; receiver < __students_start_id + __students_count; ++receiver) {
+            if (receiver != __rank) {
+                request.send_to(receiver);
             }
         }
     }
 
-    auto Student::acquire_safe_place() -> void
-    {
-        // TODO: Fix this function.
-        int index_min_nonnegative = 0;
-        int index_min_negative = 0;
-        int64_t min_negative_value = std::numeric_limits<int64_t>::max();
-        int64_t min_nonnegative_value = std::numeric_limits<int64_t>::min();
-        for (auto i = 0; i < __safehouses.size(); ++i)
-        {
-            auto diff = static_cast<int64_t>(__safehouses[i]) - static_cast<int64_t>(__demand);
-            if (diff < 0 && diff > min_negative_value)
-            {
-                min_negative_value = diff;
-                index_min_negative = i;
+    auto Student::send_ack(uint64_t receiver, uint64_t safehouse) -> void {
+        ++__timestamp;
+        Message ack {
+            .type = Message::Type::STUDENT_ACKNOWLEDGE,
+            .sender = __rank,
+            .timestamp = __timestamp,
+            .payload = Message::Payload {
+              .safehouse_index = safehouse,
+              .wine_volume = 0,
             }
-            else if (diff >= 0 && diff < min_nonnegative_value)
-            {
-                min_nonnegative_value = diff;
-                index_min_nonnegative = i;
-            }
-        }
+        };
 
-        // If there's a safehouse that can satisfy our demand, we choose this one.
-        if (min_nonnegative_value > -1)
-        {
-            __safehouse = index_min_nonnegative;
-            __acquiring_safehouse = true;
-        }
-        // Otherwise we choose the one with minimal deficiency (unless this deficiency is lower than our demand).
-        else if (min_negative_value > -__demand)
-        {
-            __safehouse = index_min_negative;
-            __acquiring_safehouse == true;
-        }
-        else
-            __acquiring_safehouse = false;
-
-        if (__acquiring_safehouse)
-        {
-            uint64_t buffer[3] = {++__timestamp, __safehouse, __demand};
-            __priority = __timestamp;
-            for (auto receiver = __students_start_id; receiver <= __students_start_id + __students_count; ++receiver)
-                MPI_Send(&buffer, 3, MPI_LONG_LONG, receiver, STUDENT_ACQUIRE_REQ, MPI_COMM_WORLD);
-        }
+        ack.send_to(receiver);
     }
 
-    auto Student::broadcast(uint64_t safehouse) -> void
-    {
-        uint64_t buffer[2] = {++__timestamp, safehouse};
-        for (auto receiver = __winemakers_start_id; receiver < __winemakers_start_id + __winemakers_count; ++receiver)
-            MPI_Send(&buffer, 2, MPI_LONG_LONG, receiver, STUDENT_BROADCAST, MPI_COMM_WORLD);
-    }
+    auto Student::send_broadcast(uint64_t safehouse) -> void {
+        fmt::print("Student #{} emptied out safehouse #{}.\n", __rank, __safehouse);
 
+        ++__timestamp;
+        Message broadcast {
+            .type = Message::Type::STUDENT_BROADCAST,
+            .sender = __rank,
+            .timestamp = __timestamp,
+            .payload = Message::Payload {
+              .safehouse_index = safehouse,
+              .wine_volume = 0,
+            }
+        };
+
+        for (auto receiver = __winemakers_start_id; receiver < __winemakers_start_id + __winemakers_count; ++receiver) {
+            broadcast.send_to(receiver);
+        }
+    }
 }
-
-#pragma GCC diagnostic pop

@@ -1,0 +1,13 @@
+BasedOnStyle: Mozilla
+IndentWidth: 4
+Language: Cpp
+Standard: c++20
+ColumnLimit: 0
+BreakBeforeBraces: Attach
+SpaceBeforeCpp11BracedList: true
+IndentPPDirectives: BeforeHash
+NamespaceIndentation: All
+BreakConstructorInitializers: BeforeColon
+AlwaysBreakAfterReturnType: None
+PenaltyReturnTypeOnItsOwnLine: 1000000
+AlwaysBreakAfterDefinitionReturnType: None
