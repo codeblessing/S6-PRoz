@@ -25,6 +25,7 @@ namespace nouveaux
         {
             uint64_t safehouse_index;
             uint64_t wine_volume;
+            uint64_t last_timestamp;
         };
 
         Type type;
@@ -38,7 +39,7 @@ namespace nouveaux
 
         auto send_to(uint64_t receiver) -> void
         {
-            uint64_t message[3] = {timestamp, payload.safehouse_index, payload.wine_volume};
+            uint64_t message[4] = {timestamp, payload.safehouse_index, payload.wine_volume, payload.last_timestamp};
             uint64_t tag = 0;
             uint64_t size = 0;
 
@@ -62,7 +63,7 @@ namespace nouveaux
                 break;
             case Type::STUDENT_ACKNOWLEDGE:
                 tag = STUDENT_ACQUIRE_ACK;
-                size = 2;
+                size = 4;
                 break;
             case Type::STUDENT_BROADCAST:
                 tag = STUDENT_BROADCAST;
@@ -79,9 +80,9 @@ namespace nouveaux
 
         static auto receive_from(uint64_t sender) -> Message
         {
-            uint64_t message[3] = {0};
+            uint64_t message[4] = {0};
             MPI_Status status;
-            MPI_Recv(&message, 3, MPI_LONG_LONG, sender, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+            MPI_Recv(&message, 4, MPI_LONG_LONG, sender, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
             Type type;
             switch (status.MPI_TAG)
@@ -112,7 +113,7 @@ namespace nouveaux
             uint64_t message_sender = status.MPI_SOURCE;
             uint64_t timestamp = message[0];
             Payload payload{};
-            memcpy(&payload, &message[1], sizeof(uint64_t) * 2);
+            memcpy(&payload, &message[1], sizeof(uint64_t) * 3);
 
             return Message{
                 type,

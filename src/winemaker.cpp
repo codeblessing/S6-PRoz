@@ -31,7 +31,7 @@ namespace nouveaux {
     }
 
     auto Winemaker::produce() -> void {
-        fmt::print("Winemaker #{} acquired safehouse #{}\n", __rank, __safehouse);
+        fmt::print("[{}] Winemaker #{} acquired safehouse #{}\n", __timestamp, __rank, __safehouse);
         __acquiring_safehouse = false;
         __acquired_safehouse = true;
 
@@ -56,7 +56,7 @@ namespace nouveaux {
 
         switch (message.type) {
             case Message::Type::WINEMAKER_REQUEST: {
-                // fmt::print("Winemaker #{} received REQUEST message from winemaker #{}.\nMessage details:\n\ttimestamp: {}\n\tsafehouse: {}\n", __rank, message.sender, message.timestamp, message.payload.safehouse_index);
+                fmt::print("[{}] Winemaker #{} received REQUEST message from winemaker #{}.\nMessage details:\n\ttimestamp: {}\n\tsafehouse: {}\n", __timestamp, __rank, message.sender, message.timestamp, message.payload.safehouse_index);
                 if (message.payload.safehouse_index == __safehouse) {
                     if ((message.timestamp > __priority) || ((message.timestamp == __priority) && (message.sender > __rank))) {
                         ++__ack_counter;
@@ -68,14 +68,17 @@ namespace nouveaux {
                 break;
             }
             case Message::Type::WINEMAKER_ACKNOWLEDGE: {
-                ++__ack_counter;
+                fmt::print("[{}] Winemaker #{} receive ACKNOWLEDGE message from winemaker #{}.", __timestamp, __rank, message.sender);
+                if (__acquiring_safehouse) {
+                    ++__ack_counter;
+                }
                 break;
             }
             case Message::Type::STUDENT_BROADCAST: {
-                // fmt::print("Winemaker #{} received BROADCAST message from Student #{}.\n", __rank, message.sender);
+                fmt::print("[{}] Winemaker #{} received BROADCAST message from Student #{}.\n", __timestamp, __rank, message.sender);
                 if (message.payload.safehouse_index == __safehouse) {
                     if (__acquired_safehouse) {
-                        fmt::print("Winemaker #{} freed safehouse #{}.\n", __rank, __safehouse);
+                        fmt::print("[{}] Winemaker #{} freed safehouse #{}.\n", __timestamp, __rank, __safehouse);
                         __acquired_safehouse = false;
                         for (auto message : __pending_acks) {
                             send_ack(message.sender);
@@ -84,7 +87,9 @@ namespace nouveaux {
                         __pending_acks.clear();
                     };
 
-                    acquire_safe_place();
+                    if (!__acquired_safehouse && !__acquiring_safehouse) {
+                        acquire_safe_place();
+                    }
                 }
                 break;
             }
@@ -104,7 +109,7 @@ namespace nouveaux {
             return;
         }
 
-        fmt::print("Winemaker #{} wants to acquire safehouse #{}.\n", __rank, __safehouse);
+        fmt::print("[{}] Winemaker #{} wants to acquire safehouse #{}.\n", __timestamp, __rank, __safehouse);
 
         __acquiring_safehouse = true;
         __ack_counter = 0;
@@ -123,6 +128,7 @@ namespace nouveaux {
             .payload = Message::Payload {
               .safehouse_index = __safehouse,
               .wine_volume = 0,
+              .last_timestamp = 0,
             },
         };
 
@@ -142,6 +148,7 @@ namespace nouveaux {
             .payload = Message::Payload {
               .safehouse_index = 0,
               .wine_volume = 0,
+              .last_timestamp = 0,
             },
         };
 
@@ -149,7 +156,7 @@ namespace nouveaux {
     }
 
     auto Winemaker::send_broadcast(uint32_t volume) -> void {
-        fmt::print("Winemaker #{} stores {} wine units in {}.\n", __rank, volume, __safehouse);
+        fmt::print("[{}] Winemaker #{} stores {} wine units in {}.\n", __timestamp, __rank, volume, __safehouse);
 
         ++__timestamp;
         Message broadcast {
@@ -159,6 +166,7 @@ namespace nouveaux {
             .payload = Message::Payload {
               .safehouse_index = __safehouse,
               .wine_volume = volume,
+              .last_timestamp = 0,
             },
         };
 

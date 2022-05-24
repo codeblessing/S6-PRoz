@@ -88,7 +88,7 @@ namespace nouveaux {
 
         auto acquisition_cleanup() -> void;
         auto send_req() -> void;
-        auto send_ack(uint64_t receiver, uint64_t safehouse) -> void;
+        auto send_ack(Message request) -> void;
         auto send_broadcast(uint64_t safehouse) -> void;
     };
 }
