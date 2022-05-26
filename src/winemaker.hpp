@@ -8,7 +8,7 @@
 
 namespace nouveaux {
     class Winemaker {
-#if defined(__WINEMAKER_DEBUG__)
+#if defined(NOUVEAUX_DEBUG)
       public:
 #endif
         // Random number generator for generating wine supply.

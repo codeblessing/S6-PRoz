@@ -6,7 +6,10 @@
 #include <fmt/ranges.h>
 #include <mpi/mpi.h>
 
+#include "logger.hpp"
 #include "tags.hpp"
+
+#define message(fmt, ...) "[{:0>10}] WINEMAKER #{} " fmt, __timestamp, __rank __VA_OPT__(,) __VA_ARGS__
 
 namespace nouveaux {
     Winemaker::Winemaker(uint64_t safehouse_count, uint32_t rank, uint64_t students_start_id, uint64_t students_count, uint64_t winemakers_start_id, uint64_t winemakers_count, uint32_t min_wine_volume, uint32_t max_wine_volume)
@@ -31,9 +34,10 @@ namespace nouveaux {
     }
 
     auto Winemaker::produce() -> void {
-        fmt::print("[{}] Winemaker #{} acquired safehouse #{}\n", __timestamp, __rank, __safehouse);
+        debug(message("acquired safehouse #{}", __safehouse))
         __acquiring_safehouse = false;
         __acquired_safehouse = true;
+        __ack_counter = 0;
 
         auto volume = __dist(__rng);
         send_broadcast(volume);
@@ -42,7 +46,7 @@ namespace nouveaux {
     auto Winemaker::listen_for_messages() -> void {
         while (true) {
             if (__winemakers_count < 2 && __acquiring_safehouse) {
-                fmt::print("Winemaker hit the SINGLE WINEMAKER point.\n");
+                debug("Winemaker hit the SINGLE WINEMAKER point.")
                 produce();
             } else {
                 auto message = Message::receive_from(MPI_ANY_SOURCE);
@@ -56,7 +60,7 @@ namespace nouveaux {
 
         switch (message.type) {
             case Message::Type::WINEMAKER_REQUEST: {
-                fmt::print("[{}] Winemaker #{} received REQUEST message from winemaker #{}.\nMessage details:\n\ttimestamp: {}\n\tsafehouse: {}\n", __timestamp, __rank, message.sender, message.timestamp, message.payload.safehouse_index);
+                debug(message("received WINEMAKER REQUEST {{ timestamp: {}, sender: {}, safehouse: {} }}", message.timestamp, message.sender, message.payload.safehouse_index))
                 if (message.payload.safehouse_index == __safehouse) {
                     if ((message.timestamp > __priority) || ((message.timestamp == __priority) && (message.sender > __rank))) {
                         ++__ack_counter;
@@ -68,17 +72,17 @@ namespace nouveaux {
                 break;
             }
             case Message::Type::WINEMAKER_ACKNOWLEDGE: {
-                fmt::print("[{}] Winemaker #{} receive ACKNOWLEDGE message from winemaker #{}.", __timestamp, __rank, message.sender);
+                debug(message("received WINEMAKER ACKNOWLEDGE {{ timestamp: {}, sender: {} }}", message.timestamp, message.sender))
                 if (__acquiring_safehouse) {
                     ++__ack_counter;
                 }
                 break;
             }
             case Message::Type::STUDENT_BROADCAST: {
-                fmt::print("[{}] Winemaker #{} received BROADCAST message from Student #{}.\n", __timestamp, __rank, message.sender);
+                debug(message("received STUDENT BROADCAST {{ timestamp: {}, sender: {}, safehouse: {} }}", message.timestamp, message.sender, message.payload.safehouse_index))
                 if (message.payload.safehouse_index == __safehouse) {
                     if (__acquired_safehouse) {
-                        fmt::print("[{}] Winemaker #{} freed safehouse #{}.\n", __timestamp, __rank, __safehouse);
+                        debug(message("freed safehouse #{}.", __safehouse))
                         __acquired_safehouse = false;
                         for (auto message : __pending_acks) {
                             send_ack(message.sender);
@@ -105,11 +109,11 @@ namespace nouveaux {
 
     auto Winemaker::acquire_safe_place() -> void {
         if (__acquiring_safehouse || __acquired_safehouse) {
-            fmt::print(stderr, "[MAK] ERROR: New acquisition request during active acquisition.\n");
+            error("[MAK] ERROR: New acquisition request during active acquisition.")
             return;
         }
 
-        fmt::print("[{}] Winemaker #{} wants to acquire safehouse #{}.\n", __timestamp, __rank, __safehouse);
+        debug(message("trying to acquire safehouse #{}", __safehouse))
 
         __acquiring_safehouse = true;
         __ack_counter = 0;
@@ -156,7 +160,7 @@ namespace nouveaux {
     }
 
     auto Winemaker::send_broadcast(uint32_t volume) -> void {
-        fmt::print("[{}] Winemaker #{} stores {} wine units in {}.\n", __timestamp, __rank, volume, __safehouse);
+        debug(message("stores {} wine units in {}.", volume, __safehouse))
 
         ++__timestamp;
         Message broadcast {

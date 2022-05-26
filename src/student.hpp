@@ -8,7 +8,7 @@
 
 namespace nouveaux {
     class Student {
-#if defined(__WINEMAKER_DEBUG__)
+#if defined(NOUVEAUX_DEBUG)
       public:
 #endif
         // Random number generator for generating wine demand.

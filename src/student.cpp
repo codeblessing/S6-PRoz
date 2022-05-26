@@ -6,12 +6,15 @@
 #include <mpi/mpi.h>
 
 #include "tags.hpp"
+#include "logger.hpp"
 
 // !!! DEBUG !!!
 #include <chrono>
 #include <thread>
 using namespace std::chrono_literals;
 // !!! /DEBUG !!!
+
+#define message(fmt, ...) "[{:0>10}] STUDENT #{} " fmt, __timestamp, __rank __VA_OPT__(,) __VA_ARGS__
 
 namespace nouveaux {
     Student::Student(uint64_t safehouse_count, uint32_t rank, uint64_t students_start_id, uint64_t students_count, uint64_t winemakers_start_id, uint64_t winemakers_count, uint32_t min_wine_volume, uint32_t max_wine_volume)
@@ -36,31 +39,33 @@ namespace nouveaux {
     }
 
     auto Student::run() -> void {
-        fmt::print("Student #{} is starting.\n", __rank);
+        info(message("starting."))
         listen_for_messages();
     }
 
     auto Student::demand() -> void {
-        if (__demand == 0)
+        if (__demand == 0) {
+            ++__timestamp;
             __demand = __dist(__rng);
-        fmt::print("[{}] Student #{} needs {} wine units.\n", __timestamp, __rank, __demand);
+        }
+        debug(message("demand: {} wine units.", __demand))
     }
 
     auto Student::consume() -> void {
         // If we hit all ACKs we're holding safehouse.
         if (__ack_counter == __students_count - 1) {
-            fmt::print("[{}] Student #{} acquired safehouse {}.\n", __timestamp, __rank, __safehouse);
+            ++__timestamp;
+            debug(message("acquired safehouse {}.", __safehouse))
+            debug(message("safehouse acquire state {{ remaining demand: {}, safehouse #{} supplies: {} }}", __demand, __safehouse, __safehouses[__safehouse]))
             const uint64_t volume = std::min(__safehouses[__safehouse], static_cast<uint64_t>(__demand));
             __safehouses[__safehouse] -= volume;
             __demand -= volume;
             if (__safehouses[__safehouse] < 1) {
                 send_broadcast(__safehouse);
             }
-            fmt::print("Student #{} reports state:\n\tdemand: {}\n\tsafehouse #{}: {}\n", __rank, __demand, __safehouse, __safehouses[__safehouse]);
-            fmt::print("Student #{} releases safehouse #{}.\n", __rank, __safehouse);
+            debug(message("safehouse release state {{ remaining demand: {}, safehouse #{} supplies: {} }}", __demand, __safehouse, __safehouses[__safehouse]))
 
             acquisition_cleanup();
-
             satisfy_demand();
         }
     }
@@ -75,7 +80,7 @@ namespace nouveaux {
 
         switch (message.type) {
             case Message::Type::WINEMAKER_BROADCAST: {
-                fmt::print("[{}] Student #{} received BROADCAST from winemaker #{}.\n", __timestamp, __rank, message.sender);
+                debug(message("received WINEMAKER BROADCAST {{ timestamp: {}, sender: {}, safehouse: {}, volume: {} }}", message.timestamp, message.sender, message.payload.safehouse_index, message.payload.wine_volume))
                 __safehouses[message.payload.safehouse_index] = message.payload.wine_volume;
                 // If we're not currently acquiring safehouse (so either we had no demand or all safehouses were empty)
                 if (!__acquiring_safehouse) {
@@ -84,7 +89,7 @@ namespace nouveaux {
                 break;
             }
             case Message::Type::STUDENT_REQUEST: {
-                fmt::print("[{}] Student #{} received REQUEST message from student #{}.\nMessage details:\n\ttimestamp: {}\n\tsafehouse: {}\n\tvolume: {}\n", __timestamp, __rank, message.sender, message.timestamp, message.payload.safehouse_index, message.payload.wine_volume);
+                debug(message("received STUDENT REQUEST {{ timestamp: {}, sender: {}, safehouse: {}, volume: {} }}", message.timestamp, message.sender, message.payload.safehouse_index, message.payload.wine_volume))
                 const uint64_t volume = std::min(__safehouses[message.payload.safehouse_index], message.payload.wine_volume);
 
                 if (message.payload.safehouse_index == __safehouse && __acquiring_safehouse) {
@@ -106,7 +111,7 @@ namespace nouveaux {
                 break;
             }
             case Message::Type::STUDENT_ACKNOWLEDGE: {
-                fmt::print("[{}] Student #{} received ACKNOWLEDGE message from student #{}.\nMessage details:\n\ttimestamp: {}\n\tvolume: {}\n\trequest timestamp: {}\n", __timestamp, __rank, message.sender, message.timestamp, message.payload.wine_volume, message.payload.last_timestamp);
+                debug(message("received STUDENT ACKNOWLEDGE {{ timestamp: {}, sender: {}, safehouse: {}, request timestamp: {} }}", message.timestamp, message.sender, message.payload.safehouse_index, message.payload.last_timestamp))
                 if (__acquiring_safehouse && message.payload.last_timestamp == __priority)
                     ++__ack_counter;
             }
@@ -121,7 +126,7 @@ namespace nouveaux {
         while (true) {
             std::this_thread::sleep_for(500ms);
             if (__students_count < 2 && __acquiring_safehouse) {
-                fmt::print("Student hit the SINGLE STUDENT point.\n");
+                debug("Student hit the SINGLE STUDENT point.\n")
                 consume();
             } else {
                 auto message = Message::receive_from(MPI_ANY_SOURCE);
@@ -132,7 +137,7 @@ namespace nouveaux {
 
     auto Student::acquire_safe_place() -> void {
         if (__acquiring_safehouse) {
-            fmt::print(stderr, "[STU] ERROR: New acquisition request during active acquisition.\n");
+            error(message("[STU] ERROR: New acquisition request during active acquisition."))
             return;
         }
 
@@ -144,10 +149,11 @@ namespace nouveaux {
                 __safehouse = index;
                 break;
             }
+            ++index;
         }
 
         if (__acquiring_safehouse) {
-            fmt::print("[{}] Student #{} wants to acquire safehouse #{}\n", __timestamp, __rank, __safehouse);
+            debug(message("trying to acquire safehouse #{}", __safehouse))
             send_req();
         }
     }
@@ -161,6 +167,8 @@ namespace nouveaux {
             const auto volume = std::min(__safehouses[message.payload.safehouse_index], message.payload.wine_volume);
             __safehouses[message.payload.safehouse_index] -= volume;
         }
+
+        __pending_acks.clear();
     }
 
     auto Student::send_req() -> void {
@@ -200,7 +208,7 @@ namespace nouveaux {
     }
 
     auto Student::send_broadcast(uint64_t safehouse) -> void {
-        fmt::print("[{}] Student #{} emptied out safehouse #{}.\n", __timestamp, __rank, __safehouse);
+        debug(message("emptied out safehouse #{}.", __safehouse))
 
         ++__timestamp;
         Message broadcast {
