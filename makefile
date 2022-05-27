@@ -4,8 +4,9 @@ CXX_FLAGS = --std=c++2a -Wall -Wextra -Wpedantic -pthread
 FMT = vendor/fmt
 DOCTEST = vendor/doctest
 SPDLOG = vendor/spdlog
+TOML = vendor/toml
 
-INCLUDE = -I$(FMT)/include -I$(DOCTEST)/include -I$(SPDLOG)/include
+INCLUDE = -I$(FMT)/include -I$(DOCTEST)/include -I$(SPDLOG)/include -I$(TOML)
 LIBS = -L$(SPDLOG)/build -lspdlog -lmpi
 SRCS = src/*.cpp $(FMT)/src/format.cc $(FMT)/src/os.cc
 
