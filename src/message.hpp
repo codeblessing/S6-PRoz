@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <cstring>
-#include <mpi/mpi.h>
+#include <mpi.h>
 
 #include "tags.hpp"
 

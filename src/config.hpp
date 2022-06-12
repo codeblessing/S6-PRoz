@@ -27,11 +27,11 @@ namespace nouveaux {
         auto max_wine_volume = toml::find_or<uint32_t>(src, "max_wine_volume", 150);
 
         return Config {
-            .safehouse_count = safehouse_count,
-            .winemaker_count = winemaker_count,
-            .student_count = student_count,
-            .min_wine_volume = min_wine_volume,
-            .max_wine_volume = max_wine_volume
+            safehouse_count,
+            winemaker_count,
+            student_count,
+            min_wine_volume,
+            max_wine_volume
         };
     }
 }

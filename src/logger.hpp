@@ -18,8 +18,7 @@ namespace nouveaux {
 
       public:
         static auto init(uint64_t id) -> void;
-        [[nodiscard]]
-        static auto get() -> std::shared_ptr<spdlog::logger>;
+        [[nodiscard]] static auto get() -> std::shared_ptr<spdlog::logger>;
     };
 }
 
@@ -31,10 +30,35 @@ namespace nouveaux {
     #define error(fmt, ...)
     #define critical(fmt, ...)
 #else
-    #define trace(fmt, ...) nouveaux::Logger::get()->trace(fmt __VA_OPT__(, ) __VA_ARGS__);
-    #define debug(fmt, ...) nouveaux::Logger::get()->debug(fmt __VA_OPT__(, ) __VA_ARGS__);
-    #define info(fmt, ...) nouveaux::Logger::get()->info(fmt __VA_OPT__(, ) __VA_ARGS__);
-    #define warn(fmt, ...) nouveaux::Logger::get()->warn(fmt __VA_OPT__(, ) __VA_ARGS__);
-    #define error(fmt, ...) nouveaux::Logger::get()->error(fmt __VA_OPT__(, ) __VA_ARGS__);
-    #define critical(fmt, ...) nouveaux::Logger::get()->critical(fmt __VA_OPT__(, ) __VA_ARGS__);
+template<typename S, typename... T>
+constexpr void trace(S fmt, T&&... args) {
+    nouveaux::Logger::get()->trace(fmt, std::forward<T>(args)...);
+}
+template<typename S, typename... T>
+constexpr void debug(S fmt, T&&... args) {
+    nouveaux::Logger::get()->debug(fmt, std::forward<T>(args)...);
+}
+template<typename S, typename... T>
+constexpr void info(S fmt, T&&... args) {
+    nouveaux::Logger::get()->info(fmt, std::forward<T>(args)...);
+}
+template<typename S, typename... T>
+constexpr void warn(S fmt, T&&... args) {
+    nouveaux::Logger::get()->warn(fmt, std::forward<T>(args)...);
+}
+template<typename S, typename... T>
+constexpr void error(S fmt, T&&... args) {
+    nouveaux::Logger::get()->error(fmt, std::forward<T>(args)...);
+}
+template<typename S, typename... T>
+constexpr void critical(S fmt, T&&... args) {
+    nouveaux::Logger::get()->critical(fmt, std::forward<T>(args)...);
+}
+// #else
+//     #define trace(fmt, ...) nouveaux::Logger::get()->trace(fmt, __VA_ARGS__);
+//     #define debug(fmt, ...) nouveaux::Logger::get()->debug(fmt, __VA_ARGS__);
+//     #define info(fmt, ...) nouveaux::Logger::get()->info(fmt, __VA_ARGS__);
+//     #define warn(fmt, ...) nouveaux::Logger::get()->warn(fmt, __VA_ARGS__);
+//     #define error(fmt, ...) nouveaux::Logger::get()->error(fmt, __VA_ARGS__);
+//     #define critical(fmt, ...) nouveaux::Logger::get()->critical(fmt, __VA_ARGS__);
 #endif

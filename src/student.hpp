@@ -4,9 +4,12 @@
 #include <random>
 #include <vector>
 
-#include "message.hpp"
+// #include "message.hpp"
 
 namespace nouveaux {
+
+    struct Message;
+
     class Student {
 #if defined(NOUVEAUX_DEBUG)
       public:
@@ -85,6 +88,10 @@ namespace nouveaux {
         auto handle_message(Message message) -> void;
         auto listen_for_messages() -> void;
         auto acquire_safe_place() -> void;
+
+        auto handle_winemaker_broadcast(Message&& message) -> void;
+        auto handle_student_request(Message&& message) -> void;
+        auto handle_student_acknowledge(Message&& message) -> void;
 
         auto acquisition_cleanup() -> void;
         auto send_req() -> void;

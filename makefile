@@ -1,4 +1,4 @@
-CXX_FLAGS = --std=c++2a -Wall -Wextra -Wpedantic -pthread
+CXX_FLAGS = --std=c++17 -Wall -Wextra -Wpedantic -pthread
 
 # External libraries
 FMT = vendor/fmt
@@ -12,17 +12,17 @@ SRCS = src/*.cpp $(FMT)/src/format.cc $(FMT)/src/os.cc
 
 .DEFAULT_GOAL := build
 
-run: build
-	mpirun -np 10 ./bin/winemaker
+run:
+	mpirun -np 10 --oversubscribe ./bin/winemaker
 
-build: compile
-	mpicxx $(CXX_FLAGS) $(LIBS) obj/*.o -o winemaker && mv winemaker bin/
+build:
+	mpicxx $(CXX_FLAGS) $(LIBS) *.o -o winemaker && mv winemaker bin/
 
-compile: clean
-	mpicxx -c $(CXX_FLAGS) -DNOUVEAUX_DEBUG $(INCLUDE) $(SRCS) && mv *.o obj/
+compile:
+	mpicxx -c $(CXX_FLAGS) -DNOUVEAUX_DEBUG $(INCLUDE) $(SRCS)
 
 clean:
-	rm -rf obj bin; mkdir obj bin bin/test
+	rm -rf bin ./*.o; mkdir bin bin/test
 
 test:
 	mpicxx -D__WINEMAKER_TEST__ $(CXX_FLAGS) $(INCLUDE) $(LIBS) $(SRCS) -o winemaker && mv winemaker ./bin/test/ && mpirun -np 4 ./bin/test/winemaker
