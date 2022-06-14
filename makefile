@@ -6,7 +6,7 @@ DOCTEST = vendor/doctest
 SPDLOG = vendor/spdlog
 TOML = vendor/toml
 
-INCLUDE = -I$(FMT)/include -I$(DOCTEST)/include -I$(SPDLOG)/include -I$(TOML)
+INCLUDE = -I$(FMT)/include -I$(SPDLOG)/include -I$(TOML)
 LIBS = -L$(SPDLOG)/build -lspdlog -lmpi
 SRCS = src/*.cpp $(FMT)/src/format.cc $(FMT)/src/os.cc
 
@@ -15,10 +15,10 @@ SRCS = src/*.cpp $(FMT)/src/format.cc $(FMT)/src/os.cc
 run:
 	mpirun -np 10 --oversubscribe ./bin/winemaker
 
-build:
+build: compile
 	mpicxx $(CXX_FLAGS) $(LIBS) *.o -o winemaker && mv winemaker bin/
 
-compile:
+compile: clean
 	mpicxx -c $(CXX_FLAGS) -DNOUVEAUX_DEBUG $(INCLUDE) $(SRCS)
 
 clean:
@@ -29,3 +29,6 @@ test:
 
 build_test_debug:
 	mpicxx -D__WINEMAKER_TEST__ $(CXX_FLAGS) $(INCLUDE) $(LIBS) $(SRCS) -o winemaker && mv winemaker ./bin/test/
+
+setup:
+	mkdir vendor/spdlog/build && cd vendor/spdlog/build && cmake .. && make -j && cd ../../
