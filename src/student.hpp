@@ -4,12 +4,9 @@
 #include <random>
 #include <vector>
 
-// #include "message.hpp"
+#include "message.hpp"
 
 namespace nouveaux {
-
-    struct Message;
-
     class Student {
 #if defined(NOUVEAUX_DEBUG)
       public:
