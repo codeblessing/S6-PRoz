@@ -18,16 +18,16 @@ namespace nouveaux {
         std::uniform_int_distribution<> __dist;
         // Current wine demand.
         //
-        // MUTABILITY: Should change only in two places:
-        //     1) When generating demand in demand() method.
-        //     2) When wine is consumed in consume() method.
+        // MUTABILITY: Should change only:
+        //     1) When zeroed -> generating.
+        //     2) When wine is consumed after safehouse acquisition.
         uint32_t __demand;
         // State of available wine supplies in every safehouse.
         //
-        // MUTABILITY: Should change only in three places (all in handle_message() method):
+        // MUTABILITY: Should change only:
         //     1) When received WINEMAKER_BROADCAST message.
         //     2) When received STUDENT_ACQUISITION_REQ message.
-        //     3) When student acquire safehouse and get supplies.
+        //     3) When student acquire safehouse.
         //
         // SAFETY: Every modification on this vector should be checked for overflow,
         // as it's highly possible to try to insert negative value here.
@@ -35,7 +35,7 @@ namespace nouveaux {
         std::vector<uint64_t> __safehouses;
         // Lamport logical clock for message timestamps.
         //
-        // MUTABILITY: Should change every time message is sent or received.
+        // MUTABILITY: Should change on internal events and when message is sent or received.
         uint64_t __timestamp;
         // Lamport clock state for last sent REQ message.
         //
@@ -43,23 +43,17 @@ namespace nouveaux {
         uint64_t __priority;
         // Currently chosen safehouse index.
         //
-        // MUTABILITY: Should change only in acquire_safe_place() method.
+        // MUTABILITY: Should change only when new safehouse acquisition is started.
         uint64_t __safehouse;
         // Number of received ACKs when acquiring safehouse.
         //
-        // MUTABILITY: Should change only in two places (both in handle_message() method):
+        // MUTABILITY: Should change only:
         //     1) When received STUDENT_ACQUISITION_ACK message with apropriate safehouse index.
         //     2) When received STUDENT_ACQUISITION_REQ message with apropriate safehouse index and higher timestamp than current priority.
         uint64_t __ack_counter;
-        // In progress safehouse acquisition indicator.
-        //
-        // MUTABILITY: Should change only in two places:
-        //     1) When starting safeplace acquisition in acquire_safe_place() method.
-        //     2) When student acquire safehouse in handle_message() method.
-        bool __acquiring_safehouse;
         // List of processes waiting for ACK with corresponding safehouse index.
         //
-        // MUTABILITY: Should change only in two places:
+        // MUTABILITY: Should change only:
         //     1) When received STUDENT_ACQUISITION_REQ message with apropriate safehouse index and higher timestamp than current priority.
         //     2) When student acquired safehouse and modified apropriate values.
         std::vector<Message> __pending_acks;
@@ -79,18 +73,6 @@ namespace nouveaux {
         auto run() -> void;
 
       private:
-        auto demand() -> void;
-        auto consume() -> void;
-        auto satisfy_demand() -> void;
-        auto handle_message(Message message) -> void;
-        auto listen_for_messages() -> void;
-        auto acquire_safe_place() -> void;
-
-        auto handle_winemaker_broadcast(Message&& message) -> void;
-        auto handle_student_request(Message&& message) -> void;
-        auto handle_student_acknowledge(Message&& message) -> void;
-
-        auto acquisition_cleanup() -> void;
         auto send_req() -> void;
         auto send_ack(Message request) -> void;
         auto send_broadcast(uint64_t safehouse) -> void;

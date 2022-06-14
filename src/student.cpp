@@ -2,17 +2,9 @@
 
 #include <algorithm>
 
-#include <fmt/format.h>
-
 #include "logger.hpp"
 #include "message.hpp"
 #include "tags.hpp"
-
-// // !!! DEBUG !!!
-// #include <chrono>
-// #include <thread>
-// using namespace std::chrono_literals;
-// // !!! /DEBUG !!!
 
 #define format(fmt) "[{:0>10}] STUDENT #{} " fmt, __timestamp, __rank
 
@@ -26,7 +18,6 @@ namespace nouveaux {
         __priority(0),
         __safehouse(0),
         __ack_counter(0),
-        __acquiring_safehouse(false),
         __pending_acks({}),
         __students_start_id(students_start_id),
         __students_count(students_count),
@@ -39,11 +30,12 @@ namespace nouveaux {
     }
 
     auto Student::run() -> void {
-        trace(format("Starting."));
+        trace(format("STARTING."));
         bool skip_safehouse = false;
         // Run infinitely
         while (true) {
             __demand = __dist(__rng);
+            debug(format("DEMAND: {}"), __demand);
 
             while (__demand != 0) {
                 // Find non-empty safehouse
@@ -58,22 +50,30 @@ namespace nouveaux {
                 }
 
                 while (__safehouse == std::numeric_limits<uint64_t>::max()) {
+                    trace(format("ALL SAFEHOUSES EMPTY."));
                     auto message = Message::receive_from(ANY_SOURCE);
+                    __timestamp = std::max(__timestamp, message.timestamp);
                     if (message.type == Message::Type::WINEMAKER_BROADCAST) {
+                        debug(format("received WINEMAKER BROADCAST {{ timestamp: {}, sender: {}, safehouse: {}, volume: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.wine_volume);
                         __safehouses[message.payload.safehouse_index] = message.payload.wine_volume;
                         __safehouse = message.payload.safehouse_index;
                     } else if (message.type == Message::Type::STUDENT_REQUEST) {
+                        debug(format("received STUDENT REQUEST {{ timestamp: {}, sender: {}, safehouse: {}, volume: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.wine_volume);
                         send_ack(message);
                     }
                 }
 
+                trace(format("CHOSEN SAFEHOUSE: {}"), __safehouse);
                 send_req();
 
                 while (__ack_counter < __students_count - 1) {
                     auto message = Message::receive_from(ANY_SOURCE);
+                    __timestamp = std::max(__timestamp, message.timestamp);
                     if (message.type == Message::Type::STUDENT_ACKNOWLEDGE && message.payload.last_timestamp == __priority) {
+                        debug(format("received STUDENT ACKNOWLEDGE {{ timestamp: {}, sender: {}, safehouse: {}, request timestamp: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.last_timestamp);
                         ++__ack_counter;
                     } else if (message.type == Message::Type::STUDENT_REQUEST) {
+                        debug(format("received STUDENT REQUEST {{ timestamp: {}, sender: {}, safehouse: {}, volume: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.wine_volume);
                         if (message.payload.safehouse_index != __safehouse) {
                             send_ack(message);
                         } else if (message.timestamp < __priority || (message.timestamp == __priority && message.sender < __rank)) {
@@ -87,183 +87,34 @@ namespace nouveaux {
                             break;
                         }
                     } else if (message.type == Message::Type::WINEMAKER_BROADCAST) {
+                        debug(format("received WINEMAKER BROADCAST {{ timestamp: {}, sender: {}, safehouse: {}, volume: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.wine_volume);
                         __safehouses[message.payload.safehouse_index] = message.payload.wine_volume;
                     }
+                    trace(format("ACK COUNTER: {}"), __ack_counter);
                 }
 
                 if (skip_safehouse) {
+                    skip_safehouse = false;
                     continue;
                 }
 
+                ++__timestamp;
+                trace(format("safehouse acquire state {{ remaining demand: {}, safehouse #{} supplies: {} }}"), __demand, __safehouse, __safehouses[__safehouse]);
                 const auto volume = std::min(static_cast<uint64_t>(__demand), __safehouses[__safehouse]);
                 __safehouses[__safehouse] -= volume;
                 __demand -= volume;
+                trace(format("safehouse release state {{ remaining demand: {}, safehouse #{} supplies: {} }}"), __demand, __safehouse, __safehouses[__safehouse]);
 
-                if(__safehouses[__safehouse] == 0) {
+                if (__safehouses[__safehouse] == 0) {
                     send_broadcast(__safehouse);
                 }
-            }
-        }
-    }
 
-    auto Student::demand() -> void {
-        if (__demand == 0) {
-            ++__timestamp;
-            __demand = __dist(__rng);
-        }
-        debug(format("demand: {} wine units."), __demand);
-    }
-
-    auto Student::consume() -> void {
-        __ack_counter = 0;
-        __acquiring_safehouse = false;
-        // Internal event happened (safehouse acquired) -> increment clock by 1.
-        ++__timestamp;
-
-        trace(format("safehouse acquire state {{ remaining demand: {}, safehouse #{} supplies: {} }}"), __demand, __safehouse, __safehouses[__safehouse]);
-        // Wine units we can take from safehouse.
-        const uint64_t volume = std::min(__safehouses[__safehouse], static_cast<uint64_t>(__demand));
-        __safehouses[__safehouse] -= volume;
-        __demand -= volume;
-
-        if (__safehouses[__safehouse] == 0) {
-            // We emptied out safehouse -> send STUDENT BROADCAST message to winemakers.
-            send_broadcast(__safehouse);
-        }
-
-        trace(format("safehouse release state {{ remaining demand: {}, safehouse #{} supplies: {} }}"), __demand, __safehouse, __safehouses[__safehouse]);
-
-        // Send ACK for pending students and update supplies appropriately.
-        for (auto message : __pending_acks) {
-            send_ack(message);
-            const auto volume = std::min(__safehouses[message.payload.safehouse_index], message.payload.wine_volume);
-            __safehouses[message.payload.safehouse_index] -= volume;
-        }
-        // Clear ACK queue.
-        __pending_acks.clear();
-
-        // Go for more wine...
-        satisfy_demand();
-    }
-
-    auto Student::satisfy_demand() -> void {
-        demand();
-        acquire_safe_place();
-    }
-
-    auto Student::handle_message(Message message) -> void {
-        __timestamp = std::max(__timestamp, message.timestamp) + 1;
-
-        switch (message.type) {
-            case Message::Type::WINEMAKER_BROADCAST: {
-                handle_winemaker_broadcast(std::move(message));
-                break;
-            }
-            case Message::Type::STUDENT_REQUEST: {
-                handle_student_request(std::move(message));
-                trace(format("ACK COUNTER: {}"), __ack_counter);
-                break;
-            }
-            case Message::Type::STUDENT_ACKNOWLEDGE: {
-                handle_student_acknowledge(std::move(message));
-                trace(format("ACK COUNTER: {}"), __ack_counter);
-            }
-            default:
-                break;
-        }
-
-        if (__ack_counter == __students_count - 1) {
-            // All required ACKs were gathered.
-            consume();
-        }
-    }
-
-    auto Student::listen_for_messages() -> void {
-        while (true) {
-            // std::this_thread::sleep_for(500ms);
-            if (__students_count < 2 && __acquiring_safehouse) {
-                debug("Student hit the SINGLE STUDENT point.\n");
-                consume();
-            } else {
-                auto message = Message::receive_from(MPI_ANY_SOURCE);
-                handle_message(message);
-            }
-        }
-    }
-
-    auto Student::acquire_safe_place() -> void {
-        if (__acquiring_safehouse) {
-            error(format("[STU] ERROR: New acquisition request during active acquisition."));
-            return;
-        }
-
-        // TODO: Implement more sophisticated algorithm, that chooses best fit.
-        // Currently used: simplest greedy algorithm that takes first non-empty safehouse.
-        auto index = 0;
-        for (auto&& safehouse : __safehouses) {
-            if (safehouse > 0) {
-                __acquiring_safehouse = true;
-                __safehouse = index;
-                break;
-            }
-            ++index;
-        }
-
-        if (__acquiring_safehouse) {
-            debug(format("trying to acquire safehouse #{}"), __safehouse);
-            send_req();
-        }
-    }
-
-    auto Student::handle_winemaker_broadcast(Message&& message) -> void {
-        debug(format("received WINEMAKER BROADCAST {{ timestamp: {}, sender: {}, safehouse: {}, volume: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.wine_volume);
-        __safehouses[message.payload.safehouse_index] = message.payload.wine_volume;
-        // If we're not currently acquiring safehouse (so either we had no demand or all safehouses were empty)
-        if (!__acquiring_safehouse) {
-            satisfy_demand();
-        }
-    }
-
-    auto Student::handle_student_request(Message&& message) -> void {
-        debug(format("received STUDENT REQUEST {{ timestamp: {}, sender: {}, safehouse: {}, volume: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.wine_volume);
-        const uint64_t volume = std::min(__safehouses[message.payload.safehouse_index], message.payload.wine_volume);
-
-        if (message.payload.safehouse_index == __safehouse && __acquiring_safehouse) {
-            if ((message.timestamp > __priority) || ((message.timestamp == __priority) && (message.sender > __rank))) {
-                ++__ack_counter;
-                __pending_acks.emplace_back(message);
-            } else {
-                __safehouses[message.payload.safehouse_index] -= volume;
-                if (__safehouses[message.payload.safehouse_index] == 0) {
-                    // Invalidate current acquisition and try another one.
-                    acquisition_cleanup();
-                    satisfy_demand();
+                for(auto&& message : __pending_acks) {
+                    send_ack(message);
                 }
+                __pending_acks.clear();
             }
-        } else {
-            __safehouses[message.payload.safehouse_index] -= volume;
-            send_ack(message);
         }
-    }
-
-    auto Student::handle_student_acknowledge(Message&& message) -> void {
-        debug(format("received STUDENT ACKNOWLEDGE {{ timestamp: {}, sender: {}, safehouse: {}, request timestamp: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.last_timestamp);
-        if (__acquiring_safehouse && message.payload.last_timestamp == __priority) {
-            ++__ack_counter;
-        }
-    }
-
-    auto Student::acquisition_cleanup() -> void {
-        __ack_counter = 0;
-        __acquiring_safehouse = false;
-
-        for (auto&& message : __pending_acks) {
-            send_ack(message);
-            const auto volume = std::min(__safehouses[message.payload.safehouse_index], message.payload.wine_volume);
-            __safehouses[message.payload.safehouse_index] -= volume;
-        }
-
-        __pending_acks.clear();
     }
 
     auto Student::send_req() -> void {

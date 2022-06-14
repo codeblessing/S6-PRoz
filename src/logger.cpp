@@ -1,7 +1,6 @@
 #include "logger.hpp"
 
-#include <fmt/format.h>
-
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 namespace nouveaux {
 
@@ -15,7 +14,8 @@ namespace nouveaux {
         }
         initialized = true;
 
-        __logger = spdlog::basic_logger_mt("out", fmt::format("logs/process_{}.log", id), true);
+        // __logger = spdlog::basic_logger_mt("out", fmt::format("logs/process_{}.log", id), true);
+        __logger = spdlog::stdout_color_mt("out");
         spdlog::set_pattern("[%L][%H:%M:%S] %v");
         spdlog::flush_every(std::chrono::seconds(1));
 #if defined(NOUVEAUX_DEBUG)

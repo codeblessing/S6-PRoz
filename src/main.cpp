@@ -1,6 +1,4 @@
-#include <fmt/format.h>
-#include <fmt/ranges.h>
-#include <mpi/mpi.h>
+#include <mpi.h>
 
 #include "config.hpp"
 #include "logger.hpp"
@@ -26,19 +24,18 @@ int main(int argc, char** argv) {
     Logger::init(rank);
 
     if (static_cast<uint64_t>(rank) < config.winemaker_count) {
-        trace("Spawning winemaker #{}.\n", rank);
+        trace("Spawning winemaker #{}.", rank);
         auto winemaker = Winemaker(config.safehouse_count, rank, config.winemaker_count, config.student_count, 0, config.winemaker_count, config.min_wine_volume, config.max_wine_volume);
 
-#ifdef NOUVEAUX_DEBUG
         if (rank == 0) {
-            trace("Safehouse count: {}\n", config.safehouse_count);
-            trace("Winemakers count: {}\n", winemaker.__winemakers_count);
+            trace("Safehouse count: {}", config.safehouse_count);
+            trace("Winemakers count: {}", winemaker.__winemakers_count);
+            trace("Students count: {}", winemaker.__students_count);
         }
-#endif
 
         winemaker.run();
     } else {
-        trace("Spawning student #{}.\n", rank);
+        trace("Spawning student #{}.", rank);
         auto student = Student(config.safehouse_count, rank, config.winemaker_count, config.student_count, 0, config.winemaker_count, config.min_wine_volume, config.max_wine_volume);
         student.run();
     }

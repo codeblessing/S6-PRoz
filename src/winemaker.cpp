@@ -2,9 +2,6 @@
 
 #include <cmath>
 
-#include <fmt/format.h>
-#include <fmt/ranges.h>
-
 #include "logger.hpp"
 #include "tags.hpp"
 
@@ -18,8 +15,6 @@ namespace nouveaux {
         __priority(0),
         __safehouse(rank % safehouse_count),
         __ack_counter(0),
-        __acquiring_safehouse(false),
-        __acquired_safehouse(false),
         __pending_acks({}),
         __students_start_id(students_start_id),
         __students_count(students_count),
@@ -28,29 +23,31 @@ namespace nouveaux {
         __rank(rank) {}
 
     auto Winemaker::run() -> void {
-        trace(format("Starting."));
-        trace(format("State: {{ safehouse: {}, ACK counter: {}, is acquiring safehouse: {}, has aquired safehouse: {} }}"), __safehouse, __ack_counter, __acquiring_safehouse, __acquired_safehouse);
+        trace(format("STARTING."));
         // Run infinitely
         while (true) {
-            acquire_safe_place();
+            info(format("sending aquire request for safehouse #{}"), __safehouse);
+            send_req();
+            __ack_counter = 0;
 
-            if (__winemakers_count > 1) {
-                while (__ack_counter < __winemakers_count - 1) {
-                    auto message = Message::receive_from(ANY_SOURCE);
-                    __timestamp = std::max(__timestamp, message.timestamp);
-                    if (message.type == Message::Type::WINEMAKER_ACKNOWLEDGE) {
+            while (__ack_counter < __winemakers_count - 1) {
+                auto message = Message::receive_from(ANY_SOURCE);
+                __timestamp = std::max(__timestamp, message.timestamp);
+                if (message.type == Message::Type::WINEMAKER_ACKNOWLEDGE) {
+                    debug(format("received WINEMAKER ACKNOWLEDGE {{ timestamp: {}, sender: {} }}"), message.timestamp, message.sender);
+                    ++__ack_counter;
+                } else if (message.type == Message::Type::WINEMAKER_REQUEST) {
+                    debug(format("received WINEMAKER REQUEST {{ timestamp: {}, sender: {}, safehouse: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.wine_volume);
+                    if (message.timestamp < __priority || message.payload.safehouse_index != __safehouse) {
+                        send_ack(message.sender);
+                    } else if (message.timestamp == __priority && message.sender < __rank) {
+                        send_ack(message.sender);
+                    } else if (message.timestamp > __priority || (message.timestamp == __priority && message.sender > __rank)) {
+                        __pending_acks.emplace_back(message);
                         ++__ack_counter;
-                    } else if (message.type == Message::Type::WINEMAKER_REQUEST) {
-                        if (message.timestamp < __priority || message.payload.safehouse_index != __safehouse) {
-                            send_ack(message.sender);
-                        } else if (message.timestamp == __priority && message.sender < __rank) {
-                            send_ack(message.sender);
-                        } else if (message.timestamp > __priority || (message.timestamp == __priority && message.sender > __rank)) {
-                            __pending_acks.emplace_back(message);
-                            ++__ack_counter;
-                        }
                     }
                 }
+                trace(format("ACK COUNTER: {}"), __ack_counter);
             }
 
             auto volume = __dist(__rng);
@@ -60,12 +57,14 @@ namespace nouveaux {
                 auto message = Message::receive_from(ANY_SOURCE);
                 __timestamp = std::max(__timestamp, message.timestamp);
                 if (message.type == Message::Type::STUDENT_BROADCAST && message.payload.safehouse_index == __safehouse) {
+                    debug(format("received STUDENT BROADCAST {{ timestamp: {}, sender: {}, safehouse: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index);
                     for (auto&& m : __pending_acks) {
                         send_ack(m.sender);
                     }
                     __pending_acks.clear();
                     break;
                 } else if (message.type == Message::Type::WINEMAKER_REQUEST) {
+                    debug(format("received WINEMAKER REQUEST {{ timestamp: {}, sender: {}, safehouse: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.wine_volume);
                     if (message.payload.safehouse_index != __safehouse) {
                         send_ack(message.sender);
                     } else {
@@ -74,29 +73,6 @@ namespace nouveaux {
                 }
             }
         }
-    }
-
-    auto Winemaker::produce() -> void {
-        assert(false);
-        // deprecated
-    }
-
-    auto Winemaker::listen_for_messages() -> void {
-        assert(false);
-        // deprecated
-    }
-
-    auto Winemaker::handle_message(Message message) -> void {
-        // deprecated
-        assert(false);
-    }
-
-    auto Winemaker::acquire_safe_place() -> void {
-        // Send request to all winemakers and set acknowledgement counter to 0
-        info(format("sending aquire request for safehouse #{}"), __safehouse);
-
-        send_req();
-        __ack_counter = 0;
     }
 
     auto Winemaker::send_req() -> void {

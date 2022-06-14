@@ -18,7 +18,7 @@ namespace nouveaux {
         std::uniform_int_distribution<> __dist;
         // Lamport logical clock for message timestamps.
         //
-        // MUTABILITY: Should change every time message is sent or received.
+        // MUTABILITY: Should change every time internal event happen or when message is sent or received.
         uint64_t __timestamp;
         // Lamport clock state for last sent REQ message.
         //
@@ -29,25 +29,13 @@ namespace nouveaux {
         const uint64_t __safehouse;
         // Number of received ACKs when acquiring safehouse.
         //
-        // MUTABILITY: Should change only in two places (both in handle_message() method):
+        // MUTABILITY: Should change only:
         //     1) When received STUDENT_ACQUISITION_ACK message with apropriate safehouse index.
         //     2) When received STUDENT_ACQUISITION_REQ message with apropriate safehouse index and higher timestamp than current priority.
         uint64_t __ack_counter;
-        // In progress safehouse acquisition indicator.
-        //
-        // MUTABILITY: Should change only in two places:
-        //     1) When starting safeplace acquisition in acquire_safe_place() method.
-        //     2) When student acquire safehouse in handle_message() method.
-        bool __acquiring_safehouse;
-        // Safehouse ownership indicator.
-        //
-        // MUTABILITY: Should change only in two places:
-        //     1) When winemaker acquires safehouse.
-        //     2) When received STUDENT_BROADCAST message with appropriate safehouse index.
-        bool __acquired_safehouse;
         // List of processes waiting for ACK with corresponding safehouse index.
         //
-        // MUTABILITY: Should change only in two places:
+        // MUTABILITY: Should change only:
         //     1) When received STUDENT_ACQUISITION_REQ message with apropriate safehouse index and higher timestamp than current priority.
         //     2) When student acquired safehouse and modified apropriate values.
         std::vector<Message> __pending_acks;
@@ -67,11 +55,6 @@ namespace nouveaux {
         auto run() -> void;
 
       private:
-        auto produce() -> void;
-        auto handle_message(Message message) -> void;
-        auto listen_for_messages() -> void;
-        auto acquire_safe_place() -> void;
-
         auto send_req() -> void;
         auto send_ack(uint64_t receiver) -> void;
         auto send_broadcast(uint32_t volume) -> void;
