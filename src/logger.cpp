@@ -2,6 +2,7 @@
 
 #include <fmt/format.h>
 
+
 namespace nouveaux {
 
     std::shared_ptr<spdlog::logger> Logger::__logger;

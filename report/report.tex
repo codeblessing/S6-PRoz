@@ -1,7 +1,9 @@
 \documentclass[12pt, a4paper, oneside]{article}
 
 \usepackage{amsmath}
+\usepackage{amsfonts}
 \usepackage[margin=0.8in]{geometry}
+\usepackage{alltt}
 
 \title{Programowanie rozproszone}
 \author{Jakub Kwiatkowski 145356\\Paweł Strzelczyk 145217}
@@ -48,26 +50,144 @@ zakładając, że zostanie ono skorygowane w czasie następnych iteracji (zbyt m
 
 \begin{enumerate}
     \item Winiarz $ W_{i} $ ,,produkuje'' $ X_{i} $ litrów wina i ubiega się o bezpieczne miejsce $ B_{i} $:
-    \begin{enumerate}
-        \item  $ W_{i} $ rozsyła do wszystkich winiarzy wiadomość \texttt{REQ} zawierającą swój zegar Lamporta $ L_{W_{i}} $ oraz żądane miejsce $ B_{i} $.
-        \item Po otrzymaniu wiadomości \texttt{ACK} (lub \texttt{REQ} z wyższymi zegarami Lamporta niż własny) od wszystkich winiarzy,
-        $ W_{i} $ wchodzi do sekcji krytycznej i rozsyła wszystkim wiadomość $ M_{W_{i}} $ (\texttt{INFO}) zawierającą informacje o $ B_{i} $ i $ X_{i} $.
-        \item Jeśli $ W_{i} $ otrzyma wiadomość \texttt{REQ} z zegarem Lamporta niższym niż własny odsyła \texttt{ACK} i dalej oczekuje na pozostałe \texttt{ACK}.
-        \item Po rozgłoszeniu wiadomości $ M_{W_{i}} $, $ W_{i} $ wychodzi z sekcji krytycznej i rozsyła \texttt{ACK} wszystkim oczekującym.
-    \end{enumerate}
+          \begin{enumerate}
+              \item  $ W_{i} $ rozsyła do wszystkich winiarzy wiadomość \texttt{REQ} zawierającą swój zegar Lamporta $ L_{W_{i}} $ oraz żądane miejsce $ B_{i} $.
+              \item Po otrzymaniu wiadomości \texttt{ACK} (lub \texttt{REQ} z wyższymi zegarami Lamporta niż własny) od wszystkich winiarzy,
+                    $ W_{i} $ wchodzi do sekcji krytycznej i rozsyła wszystkim wiadomość $ M_{W_{i}} $ (\texttt{INFO}) zawierającą informacje o $ B_{i} $ i $ X_{i} $.
+              \item Jeśli $ W_{i} $ otrzyma wiadomość \texttt{REQ} z zegarem Lamporta niższym niż własny odsyła \texttt{ACK} i dalej oczekuje na pozostałe \texttt{ACK}.
+              \item Po rozgłoszeniu wiadomości $ M_{W_{i}} $, $ W_{i} $ wychodzi z sekcji krytycznej i rozsyła \texttt{ACK} wszystkim oczekującym.
+          \end{enumerate}
     \item $ W_{i} $ rozpoczyna następną produkcję dopiero po otrzymaniu \texttt{RELEASE} zawierającego $ B_{i} $.
-    
+
     \item Student $ S_{j} $ określa swoje zapotrzebowanie na $ Y_{j} $ litrów wina i ubiega się o dostęp do $ B_{k} $:
-    \begin{enumerate}
-        \item $ S_{j} $ wysyła do wszystkich studentów wiadomość \texttt{REQ} zawierającą $ B_{k} $ oraz ilość wina jaką zamierza stamtąd pobrać.
-        \item Po otrzymaniu wiadomości \texttt{ACK} (lub \texttt{REQ} z wyższymi zegarami Lamporta niż własny) od wszystkich studentów,
-        $ S_{j} $ wchodzi do sekcji krytycznej.
-        \item Jeśli $ S_{j} $ wyczerpie zasoby $ B_{k} $, to rozsyła winiarzom wiadomość \texttt{RELEASE} zawierającą $ B_{k} $.
-        \item Po wyjściu z sekcji krytycznej $ S_{j} $ rozsyła \texttt{ACK} wszystkim oczekującym.
-    \end{enumerate}
+          \begin{enumerate}
+              \item $ S_{j} $ wysyła do wszystkich studentów wiadomość \texttt{REQ} zawierającą $ B_{k} $ oraz ilość wina jaką zamierza stamtąd pobrać.
+              \item Po otrzymaniu wiadomości \texttt{ACK} (lub \texttt{REQ} z wyższymi zegarami Lamporta niż własny) od wszystkich studentów,
+                    $ S_{j} $ wchodzi do sekcji krytycznej.
+              \item Jeśli $ S_{j} $ wyczerpie zasoby $ B_{k} $, to rozsyła winiarzom wiadomość \texttt{RELEASE} zawierającą $ B_{k} $.
+              \item Po wyjściu z sekcji krytycznej $ S_{j} $ rozsyła \texttt{ACK} wszystkim oczekującym.
+          \end{enumerate}
     \item $ S_{j} $ ubiega się o kolejne $ B_{k} $ doputy, dopóki nie wypełni zapotrzebowania $ Y_{j} $.
 \end{enumerate}
 
 Zegary Lamporta są inkrementowane w zwykły sposób, jednak nigdy nie w trakcie rozsyłania wiadomości (rozesłanie wiadomości do grupy odbiorców jest traktowane jako operacja atomowa).
+
+\section*{Implementacja}
+
+W naszej implementacji proponowanego algorytmu przyjęliśmy następującą strukturę wiadomości:
+
+\begin{alltt}
+Message \{
+    type,
+    timestamp,
+    sender,
+    payload \{
+        safehouse\_index,
+        wine\_volume,
+        last\_timestamp
+    \}
+\}
+\end{alltt}
+
+Pole \texttt{payload} jest zawartością specyficzną dla typu wiadomości.
+Poniżej przedstawiono typy wiadomości i pole \texttt{payload} specyficzne dla nich.
+
+\begin{itemize}
+
+\item \texttt{WINEMAKER\_REQUEST}:
+\begin{alltt}
+payload: \{
+    safehouse\_index
+\}
+\end{alltt}
+
+\item \texttt{WINEMAKER\_ACKNOWLEDGE}:
+\begin{alltt}
+payload: \{\}
+\end{alltt}
+
+\item \texttt{WINEMAKER\_BROADCAST}:
+\begin{alltt}
+payload: \{
+    safehouse\_index,
+    wine\_volume
+\}
+\end{alltt}
+
+\item \texttt{STUDENT\_REQUEST}:
+\begin{alltt}
+payload: \{
+    safehouse\_index,
+    wine\_volume
+\}
+\end{alltt}
+
+\item \texttt{STUDENT\_ACKNOWLEDGE}:
+\begin{alltt}
+payload: \{
+    safehouse\_index,
+    last\_timestamp
+\}
+\end{alltt}
+
+\item\texttt{STUDENT\_BROADCAST}:
+\begin{alltt}
+payload: \{
+    safehouse\_index
+\}
+\end{alltt}
+
+\end{itemize}
+
+Niech $ \mathbb{W} $ będzie uporządkowanym wektorem winiarzy oraz $ \mathbb{S} $ będzie uporządkowanym wektorem studentów. Ponadto, niech $ \mathbb{B} $ będzie wektorem bezpiecznych miejsc. Wtedy:
+
+\begin{flalign*} & \forall{w \in \mathbb{W}}: &\\ \end{flalign*}
+\begin{enumerate}
+    \item Niech $ i $ będzie indeksem $ w $ w wektorze $ \mathbb{W} $
+    \item Niech $ b = i\mod{\|\mathbb{B}\|} $ będzie przypisanym do $ w $ indeksem bezpiecznego miejsca w wektorze $ \mathbb{B} $
+    \item\label{alg:wmk:start} $ w $ rozsyła do pozostałych winiarzy wiadomość \texttt{WINEMAKER\_REQUEST} z informacją o $ b $
+    \item $ w $ ustawia swój licznik zgód na $ 0 $
+    \item Dopóki licznik zgód jest mniejszy od $ \|\mathbb{W}\| - 1 $:
+    \begin{enumerate}
+        \item $ w $ oczekuje na wiadomość $ m $
+        \item Jeśli $ m $ jest typu \texttt {WINEMAKER\_ACKNOWLEDGE}, $ w $ zwiększa licznik zgód o $ 1 $
+        \item Jeśli $ m $ jest typu \texttt{WINEMAKER\_REQUEST}:
+            \begin{enumerate}
+                \item Jeśli zegar $ m $ jest niższy od zegara wysłanej wiadomości lub indeks bezpiecznego miejsca jest różny od $ b $, $ w $ wysyła wiadomość zwrotną \texttt{WINEMAKER\_ACKNOWLEDGE}
+                \item Jeśli zegar $ m $ jest równy zegarowi wysłanej wiadomości oraz identyfikator $ w $ jest większy od identyfikatora nadawcy $ m $, $ w $ wysyła wiadomość zwrotną \linebreak \texttt{WINEMAKER\_ACKNOWLEDGE}
+                \item Jeśli zegar $ m $ jest większy od zegara wysłanej wiadomości lub zegar $ m $ jest równy zegarowi wysłanej wiadomości oraz identyfikator $ w $ jest mniejszy od identyfikatora nadawcy $ m $, $ w $ dopisuje nadawcę $ m $ do kolejki oczekujących na zgodę i zwiększa licznik zgód o $ 1 $
+            \end{enumerate}
+        \end{enumerate}
+    \item $ w $ wybiera losowo liczbę jednostek wina $ v $, i rozsyła ją do wszystkich studentów wiadomością \texttt{WINEMAKER\_BROADCAST}
+    \item $ w $ oczekuje na wiadomość $ m $ typu \texttt{STUDENT\_BROADCAST} z indeksem bezpiecznego miejsca równym $ b $
+    \item $ w $ rozyła wiadomość \texttt{WINEMAKER\_ACKNOWLEDGE} do winiarzy w kolejce oczekujących na zgodę
+    \item Wróć do \ref{alg:wmk:start}
+\end{enumerate}
+
+// TODO:
+\begin{flalign*} & \forall{s \in \mathbb{S}}: &\\ \end{flalign*}
+\begin{enumerate}
+    \item Niech $ i $ będzie indeksem $ w $ w wektorze $ \mathbb{W} $
+    \item Niech $ b = i\mod{\|\mathbb{B}\|} $ będzie przypisanym do $ w $ indeksem bezpiecznego miejsca w wektorze $ \mathbb{B} $
+    \item\label{alg:stu:start} $ w $ rozsyła do pozostałych winiarzy wiadomość \texttt{WINEMAKER\_REQUEST} z informacją o $ b $
+    \item $ w $ ustawia swój licznik zgód na $ 0 $
+    \item Dopóki licznik zgód jest mniejszy od $ \|\mathbb{W}\| - 1 $:
+    \begin{enumerate}
+        \item $ w $ oczekuje na wiadomość $ m $
+        \item Jeśli $ m $ jest typu \texttt {WINEMAKER\_ACKNOWLEDGE}, $ w $ zwiększa licznik zgód o $ 1 $
+        \item Jeśli $ m $ jest typu \texttt{WINEMAKER\_REQUEST}:
+            \begin{enumerate}
+                \item Jeśli zegar $ m $ jest niższy od zegara wysłanej wiadomości lub indeks bezpiecznego miejsca jest różny od $ b $, $ w $ wysyła wiadomość zwrotną \texttt{WINEMAKER\_ACKNOWLEDGE}
+                \item Jeśli zegar $ m $ jest równy zegarowi wysłanej wiadomości oraz identyfikator $ w $ jest większy od identyfikatora nadawcy $ m $, $ w $ wysyła wiadomość zwrotną \linebreak \texttt{WINEMAKER\_ACKNOWLEDGE}
+                \item Jeśli zegar $ m $ jest większy od zegara wysłanej wiadomości lub zegar $ m $ jest równy zegarowi wysłanej wiadomości oraz identyfikator $ w $ jest mniejszy od identyfikatora nadawcy $ m $, $ w $ dopisuje nadawcę $ m $ do kolejki oczekujących na zgodę i zwiększa licznik zgód o $ 1 $
+            \end{enumerate}
+        \end{enumerate}
+    \item $ w $ wybiera losowo liczbę jednostek wina $ v $, i rozsyła ją do wszystkich studentów wiadomością \texttt{WINEMAKER\_BROADCAST}
+    \item $ w $ oczekuje na wiadomość $ m $ typu \texttt{STUDENT\_BROADCAST} z indeksem bezpiecznego miejsca równym $ b $
+    \item $ w $ rozyła wiadomość \texttt{WINEMAKER\_ACKNOWLEDGE} do winiarzy w kolejce oczekujących na zgodę
+    \item Wróć do \ref{alg:wmk:start}
+\end{enumerate}
+
+
 
 \end{document}
