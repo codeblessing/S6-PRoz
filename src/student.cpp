@@ -39,8 +39,71 @@ namespace nouveaux {
     }
 
     auto Student::run() -> void {
-        info(format("STARTING."));
-        listen_for_messages();
+        trace(format("Starting."));
+        bool skip_safehouse = false;
+        // Run infinitely
+        while (true) {
+            __demand = __dist(__rng);
+
+            while (__demand != 0) {
+                // Find non-empty safehouse
+                __safehouse = std::numeric_limits<uint64_t>::max();
+                auto index = 0;
+                for (auto&& safehouse : __safehouses) {
+                    if (safehouse > 0) {
+                        __safehouse = index;
+                        break;
+                    }
+                    ++index;
+                }
+
+                while (__safehouse == std::numeric_limits<uint64_t>::max()) {
+                    auto message = Message::receive_from(ANY_SOURCE);
+                    if (message.type == Message::Type::WINEMAKER_BROADCAST) {
+                        __safehouses[message.payload.safehouse_index] = message.payload.wine_volume;
+                        __safehouse = message.payload.safehouse_index;
+                    } else if (message.type == Message::Type::STUDENT_REQUEST) {
+                        send_ack(message);
+                    }
+                }
+
+                send_req();
+
+                while (__ack_counter < __students_count - 1) {
+                    auto message = Message::receive_from(ANY_SOURCE);
+                    if (message.type == Message::Type::STUDENT_ACKNOWLEDGE && message.payload.last_timestamp == __priority) {
+                        ++__ack_counter;
+                    } else if (message.type == Message::Type::STUDENT_REQUEST) {
+                        if (message.payload.safehouse_index != __safehouse) {
+                            send_ack(message);
+                        } else if (message.timestamp < __priority || (message.timestamp == __priority && message.sender < __rank)) {
+                            send_ack(message);
+                        } else if (message.timestamp > __priority || (message.timestamp == __priority && message.sender > __rank)) {
+                            __pending_acks.emplace_back(message);
+                            ++__ack_counter;
+                        }
+                        if (__safehouses[__safehouse] == 0) {
+                            skip_safehouse = true;
+                            break;
+                        }
+                    } else if (message.type == Message::Type::WINEMAKER_BROADCAST) {
+                        __safehouses[message.payload.safehouse_index] = message.payload.wine_volume;
+                    }
+                }
+
+                if (skip_safehouse) {
+                    continue;
+                }
+
+                const auto volume = std::min(static_cast<uint64_t>(__demand), __safehouses[__safehouse]);
+                __safehouses[__safehouse] -= volume;
+                __demand -= volume;
+
+                if(__safehouses[__safehouse] == 0) {
+                    send_broadcast(__safehouse);
+                }
+            }
+        }
     }
 
     auto Student::demand() -> void {
@@ -221,6 +284,8 @@ namespace nouveaux {
                 request.send_to(receiver);
             }
         }
+
+        __ack_counter = 0;
     }
 
     auto Student::send_ack(Message request) -> void {
