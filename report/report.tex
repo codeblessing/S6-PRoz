@@ -145,11 +145,13 @@ Niech $ \mathbb{W} $ będzie uporządkowanym wektorem winiarzy oraz $ \mathbb{S}
 \begin{enumerate}
     \item Niech $ i $ będzie indeksem $ w $ w wektorze $ \mathbb{W} $
     \item Niech $ b = i\mod{\|\mathbb{B}\|} $ będzie przypisanym do $ w $ indeksem bezpiecznego miejsca w wektorze $ \mathbb{B} $
-    \item\label{alg:wmk:start} $ w $ rozsyła do pozostałych winiarzy wiadomość \texttt{WINEMAKER\_REQUEST} z informacją o $ b $
+    \item Niech $ c $ będzie zegarem lamporta przypisanym do $ w $.
+    \item\label{alg:wmk:start} $ w $ zwiększa $ c $ o $ 1 $ i rozsyła do pozostałych winiarzy wiadomość \texttt{WINEMAKER\_REQUEST} z informacją o $ b $
     \item $ w $ ustawia swój licznik zgód na $ 0 $
     \item Dopóki licznik zgód jest mniejszy od $ \|\mathbb{W}\| - 1 $:
     \begin{enumerate}
         \item $ w $ oczekuje na wiadomość $ m $
+        \item $ w $ ustawia $ c = \max\{c, m.timestamp\}$
         \item Jeśli $ m $ jest typu \texttt {WINEMAKER\_ACKNOWLEDGE}, $ w $ zwiększa licznik zgód o $ 1 $
         \item Jeśli $ m $ jest typu \texttt{WINEMAKER\_REQUEST}:
             \begin{enumerate}
@@ -160,7 +162,7 @@ Niech $ \mathbb{W} $ będzie uporządkowanym wektorem winiarzy oraz $ \mathbb{S}
         \end{enumerate}
     \item $ w $ wybiera losowo liczbę jednostek wina $ v $, i rozsyła ją do wszystkich studentów wiadomością \texttt{WINEMAKER\_BROADCAST}
     \item $ w $ oczekuje na wiadomość $ m $ typu \texttt{STUDENT\_BROADCAST} z indeksem bezpiecznego miejsca równym $ b $
-    \item $ w $ rozyła wiadomość \texttt{WINEMAKER\_ACKNOWLEDGE} do winiarzy w kolejce oczekujących na zgodę
+    \item $ w $ zwiększa $ c $ o 1 i rozyła wiadomość \texttt{WINEMAKER\_ACKNOWLEDGE} do winiarzy w kolejce oczekujących na zgodę
     \item Wróć do \ref{alg:wmk:start}
 \end{enumerate}
 
@@ -168,34 +170,38 @@ Niech $ \mathbb{W} $ będzie uporządkowanym wektorem winiarzy oraz $ \mathbb{S}
 \begin{enumerate}
     \item Niech $ b \in \mathbb{B} $ będzie bezpiecznym miejscem
     \item Niech $ \mathit{S}_b $ będzie liczbą jednostek składowanych w $ b $
+    \item Niech $ c $ będzie zegarem lamporta przypisanym do $ s $
     % \item\label{alg:stu:start} $ s $ oczekuje na wiadomość typu \texttt{WINEMAKER\_BROADCAST} z informacją o $ b $
     \item\label{alg:stu:demand} $ s $ wybiera losowo liczbę jednostek wina $ v $
     \item\label{alg:stu:safehouse} $ s $ wybiera pierwsze niepuste bezpieczne miejsce $ b $
     \begin{enumerate}
-        \item Jeśli wszystkie $ b $ są puste, $ s $ oczekuje na wiadomość typu \texttt{WINEMAKER\_BROADCAST} z informacją o $ b $
+        \item Jeśli wszystkie $ b $ są puste, $ s $ oczekuje na wiadomość $ m $:
+        \item $ s $ ustawia $ c = \max\{c, m.timestamp\} $
+        \item Jeśli $ m $ jest typu \texttt{WINEMAKER\_BROADCAST}, $ s $ aktualizuje stan odpowiedniego $ b $, oraz wybiera $ b $ jako swoje bezpieczne miejsce
+        \item Jeśli $ m $ jest typu \texttt{STUDENT\_REQUEST}, $ s $ zwiększa $ c $ o $ 1 $ i wysyła wiadomość zwrotną \texttt{STUDENT\_ACKNOWLEDGE} 
     \end{enumerate}
-    \item $ s $ rozsyła do wszystkich studentów wiadomość \texttt{STUDENT\_REQUEST} z informacją o $ b $ i $ v $, oraz ustawia znacznik $ p $ (priorytet) na wartość zegara wysłanego zapytania.
+    \item $ s $ zwiększa $ c $ o 1 i rozsyła do wszystkich studentów wiadomość \texttt{STUDENT\_REQUEST} z informacją o $ b $ i $ v $, oraz ustawia znacznik $ p $ (priorytet) na $ c $.
     \item $ s $ ustawia swój licznik zgód na $ 0 $
     \item Dopóki licznik zgód jest mniejszy od $ \|\mathbb{S}\| - 1 $:
     \begin{enumerate}
         \item $ s $ oczekuje na wiadomość $ m $
+        \item $ s $ ustawia $ c = \max\{c, m.timestamp\} $
         \item Jeśli $ m $ jest typu \texttt {STUDENT\_ACKNOWLEDGE} oraz $ m.payload.last\_timestamp $ jest równe $ p $, $ s $ zwiększa licznik zgód o $ 1 $
         \item Jeśli $ m $ jest typu \texttt{STUDENT\_REQUEST}:
             \begin{enumerate}
-                \item Jeśli zegar $ m $ jest niższy od $ p $ lub indeks bezpiecznego miejsca jest różny od $ b $, $ s $ wysyła wiadomość zwrotną \texttt{STUDENT\_ACKNOWLEDGE} oraz zmniejsza odpowiednio zapasy w bezpiecznym miejscu wskazanym w $ m $ 
-                \item Jeśli zegar $ m $ jest równy $ p $ oraz identyfikator $ s $ jest większy od identyfikatora nadawcy $ m $, $ s $ wysyła wiadomość zwrotną \texttt{STUDENT\_ACKNOWLEDGE} oraz zmniejsza odpowiednio zapasy w bezpiecznym miejscu wskazanym w $ m $
+                \item Jeśli zegar $ m $ jest niższy od $ p $ lub indeks bezpiecznego miejsca jest różny od $ b $, $ s $ zwiększa $ c $ o $ 1 $ i wysyła wiadomość zwrotną \texttt{STUDENT\_ACKNOWLEDGE} oraz zmniejsza odpowiednio zapasy w bezpiecznym miejscu wskazanym w $ m $ 
+                \item Jeśli zegar $ m $ jest równy $ p $ oraz identyfikator $ s $ jest większy od identyfikatora nadawcy $ m $, $ s $ zwiększa $ c $ o $ 1 $ i wysyła wiadomość zwrotną \texttt{STUDENT\_ACKNOWLEDGE} oraz zmniejsza odpowiednio zapasy w bezpiecznym miejscu wskazanym w $ m $
                 \item Jeśli zaszła jedna z powyższych sytuacji i $ \mathit{S}_b = 0 $, $ s $ porzuca próbę zajęcia $ b $ i wraca do punktu \ref{alg:stu:safehouse}
                 \item Jeśli zegar $ m $ jest większy od zegara wysłanej wiadomości lub zegar $ m $ jest równy zegarowi wysłanej wiadomości oraz identyfikator $ s $ jest mniejszy od identyfikatora nadawcy $ m $, $ s $ dopisuje nadawcę $ m $ do kolejki oczekujących na zgodę i zwiększa licznik zgód o $ 1 $
             \end{enumerate}
         \item Jeśli $ m $ jest typu \texttt{WINEMAKER\_BROADCAST}, $ s $ aktualizuje stan odpowiedniego $ b $
         \end{enumerate}
+    \item $ s $ zwiększa $ c $ o $ 1 $.
     \item $ s $ zmniejsza $ \mathit{S}_b $ oraz $ v $ o $ \min\{\mathit{S}_b, v\} $
-    \item Jeśli $ \mathit{S}_b = 0 $, $ s $ rozsyła wszystkim winiarzom wiadomość \texttt{STUDENT\_BROADCAST} z informacją o $ b $.
-    \item $ s $ rozyła wiadomość \texttt{STUDENT\_ACKNOWLEDGE} do studentów w kolejce oczekujących na zgodę
+    \item Jeśli $ \mathit{S}_b = 0 $, $ s $ zwiększa $ c $ o $ 1 $ i rozsyła wszystkim winiarzom wiadomość \texttt{STUDENT\_BROADCAST} z informacją o $ b $
+    \item $ s $ zwiększa $ c $ o $ 1 $ i rozyła wiadomość \texttt{STUDENT\_ACKNOWLEDGE} do studentów w kolejce oczekujących na zgodę
     \item Jeśli $ v \neq 0 $, $ s $ wraca do punktu \ref{alg:stu:safehouse}
     \item W przeciwnym przypadku $ s $ wraca do punktu \ref{alg:stu:demand}
 \end{enumerate}
-
-
 
 \end{document}
