@@ -52,7 +52,7 @@ namespace nouveaux {
                 while (__safehouse == std::numeric_limits<uint64_t>::max()) {
                     trace(format("ALL SAFEHOUSES EMPTY."));
                     auto message = Message::receive_from(ANY_SOURCE);
-                    __timestamp = std::max(__timestamp, message.timestamp);
+                    __timestamp = std::max(__timestamp, message.timestamp) + 1;
                     if (message.type == Message::Type::WINEMAKER_BROADCAST) {
                         debug(format("received WINEMAKER BROADCAST {{ timestamp: {}, sender: {}, safehouse: {}, volume: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.wine_volume);
                         __safehouses[message.payload.safehouse_index] = message.payload.wine_volume;
@@ -68,7 +68,7 @@ namespace nouveaux {
 
                 while (__ack_counter < __students_count - 1) {
                     auto message = Message::receive_from(ANY_SOURCE);
-                    __timestamp = std::max(__timestamp, message.timestamp);
+                    __timestamp = std::max(__timestamp, message.timestamp) + 1;
                     if (message.type == Message::Type::STUDENT_ACKNOWLEDGE && message.payload.last_timestamp == __priority) {
                         debug(format("received STUDENT ACKNOWLEDGE {{ timestamp: {}, sender: {}, safehouse: {}, request timestamp: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index, message.payload.last_timestamp);
                         ++__ack_counter;

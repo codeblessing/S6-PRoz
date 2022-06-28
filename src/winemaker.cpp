@@ -32,7 +32,7 @@ namespace nouveaux {
 
             while (__ack_counter < __winemakers_count - 1) {
                 auto message = Message::receive_from(ANY_SOURCE);
-                __timestamp = std::max(__timestamp, message.timestamp);
+                __timestamp = std::max(__timestamp, message.timestamp) + 1;
                 if (message.type == Message::Type::WINEMAKER_ACKNOWLEDGE) {
                     debug(format("received WINEMAKER ACKNOWLEDGE {{ timestamp: {}, sender: {} }}"), message.timestamp, message.sender);
                     ++__ack_counter;
@@ -55,7 +55,7 @@ namespace nouveaux {
 
             while (true) {
                 auto message = Message::receive_from(ANY_SOURCE);
-                __timestamp = std::max(__timestamp, message.timestamp);
+                __timestamp = std::max(__timestamp, message.timestamp) + 1;
                 if (message.type == Message::Type::STUDENT_BROADCAST && message.payload.safehouse_index == __safehouse) {
                     debug(format("received STUDENT BROADCAST {{ timestamp: {}, sender: {}, safehouse: {} }}"), message.timestamp, message.sender, message.payload.safehouse_index);
                     for (auto&& m : __pending_acks) {
